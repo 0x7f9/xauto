@@ -1,0 +1,11 @@
+__pycache__/
+
+xauto/bootstrap/venv/
+xauto/bootstrap/.bootstrap_done
+xauto/bootstrap/bootstrap.log
+xauto/bootstrap/get-pip.py
+
+xauto/debug_logs/
+xauto/internal/geckodriver/geckodriver
+
+main.py

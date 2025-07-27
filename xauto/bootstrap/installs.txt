@@ -1,0 +1,9 @@
+setuptools
+selenium==4.33.0
+selenium-wire==5.1.0
+blinker==1.6.2
+termcolor
+requests
+psutil
+urllib3
+pyyaml
