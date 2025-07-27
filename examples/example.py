@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from xauto.bootstrap.build import bootstrap
 if not bootstrap():
     print("Bootstrap failed")
