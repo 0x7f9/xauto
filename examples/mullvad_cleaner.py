@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from xauto.bootstrap.build import bootstrap
 if not bootstrap():
     print("ERROR: Bootstrap failed. Cannot proceed.")
-    import sys
     sys.exit(1)
 
 from xauto.utils.setup import get_options
 from xauto.internal.geckodriver.driver import get_driver_pool
-
+from xauto.utils.page_loading import wait_for_page_load
+from xauto.utils.validation import is_bot_page
 from selenium.webdriver.common.by import By
 from time import sleep
 import os
@@ -23,8 +27,15 @@ KEEP_NAMES = {
 
 def login_to_mullvad(driver):
     driver.get("https://mullvad.net/en/account/login")
-    sleep(1)
 
+    if not wait_for_page_load(driver):
+        print("Page did not load")
+        return
+    
+    if is_bot_page(driver, driver.current_url):
+        print("Bot page has been detected")
+        return
+    
     try:
         input = driver.find_element(By.NAME, "account_number")
         input.send_keys(TOKEN)
