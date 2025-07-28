@@ -57,35 +57,6 @@ USER_AGENTS = {
     "mac_firefox_127": "Mozilla/5.0 (Macintosh; Intel Mac OS X 13.4; rv:127.0) Gecko/20100101 Firefox/127.0",
 }
 
-BROWSER_ERROR_TITLES = [
-    "Server Not Found", 
-    "Problem loading page", 
-    "This site can't be reached",
-    "Hmm. We're having trouble finding that site."
-]
-
-CONNECTION_ERROR_KEYWORDS = [
-    "connection refused",
-    "connection error",
-    "max retries exceeded",
-    "newconnectionerror",
-    "httpconnectionpool",
-]
-
-def is_browser_error_page(driver):
-    try:
-        title = driver.title.lower()
-        return any(error.lower() in title for error in BROWSER_ERROR_TITLES)
-    except Exception:
-        return False
-
-def is_connection_error(error):
-    try:
-        error_str = str(error).lower()
-        return any(keyword in error_str for keyword in CONNECTION_ERROR_KEYWORDS)
-    except Exception:
-        return False
-
 def get_text_colors():
     color_config = Config.get("colors", {})
     if color_config:
