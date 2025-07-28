@@ -94,7 +94,10 @@ class TaskManager:
         if len(self.workers) > 0:
             debug_logger.warning("TaskManager already started, ignoring start request")
             return
-        num_workers = min(initial_workers if initial_workers is not None else self.max_workers, self.max_workers)
+        
+        desired_workers = initial_workers if initial_workers is not None else 1
+        num_workers = min(desired_workers, self.max_workers)
+
         debug_logger.info(f"Starting TaskManager with {num_workers} workers")
         self._monitor_thread = SafeThread(
             target_fn=self._monitor_workers,
