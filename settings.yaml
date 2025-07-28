@@ -1,5 +1,4 @@
 system:
-  auto_run: false
   driver_limit: auto
   headless: false
 
@@ -77,8 +76,10 @@ misc:
 
   thread_monitoring:
     interval_sec: 1
-    
+  
+  # default timeouts
   timeouts:
+    body_load: 10
     max_task_retries: 2
     shutdown: 10
     join: 10
