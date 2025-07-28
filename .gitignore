@@ -9,3 +9,4 @@ xauto/debug_logs/
 xauto/internal/geckodriver/geckodriver
 
 main.py
+testing.py
