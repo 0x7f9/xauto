@@ -5,6 +5,7 @@ import threading
 import os
 
 MAIN_LOG_FILE = "xauto/debug_logs/monitor_details.log"
+DEBUG_BOT_DETECTION_LOG_FILE = "xauto/debug_logs/debug_bot_detection.log"
 DEBUG_LOG_FILE = "xauto/debug_logs/debug.log"
 
 _logger_lock = threading.Lock()
@@ -28,7 +29,13 @@ def _initialize_loggers():
         monitor_details_handler.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
         monitor_details.addHandler(monitor_details_handler)
 
-
+    debug_bot_detection = logging.getLogger("debug_bot_detection")
+    debug_bot_detection.setLevel(logging.DEBUG)
+    debug_bot_detection.propagate = False 
+    if not debug_bot_detection.handlers:
+        debug_bot_detection_handler = logging.FileHandler(DEBUG_BOT_DETECTION_LOG_FILE, mode="w")
+        debug_bot_detection_handler.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
+        debug_bot_detection.addHandler(debug_bot_detection_handler)
 
     debug_logger = logging.getLogger("debug")
     debug_logger.setLevel(logging.DEBUG)
