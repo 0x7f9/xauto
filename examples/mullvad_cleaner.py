@@ -42,7 +42,7 @@ def revoke_devices(driver):
     driver.get("https://mullvad.net/en/account/devices")
     sleep(2)
 
-    from xauto.utils.setup import is_browser_error_page
+    from xauto.utils.validation import is_browser_error_page
     if is_browser_error_page(driver):
         print("[xauto] Browser error page detected. Exiting.")
         return

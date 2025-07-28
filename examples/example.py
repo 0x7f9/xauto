@@ -8,23 +8,13 @@ if not bootstrap():
 
 from xauto.utils.config import Config
 from xauto.utils.setup import get_options
+from xauto.utils.lifecycle import get_worker_limits
 from xauto.internal.geckodriver.driver import get_driver_pool
 from xauto.utils.task_manager import TaskManager
 from xauto.utils.logging import debug_logger
 
 config = Config()
 config.freeze()
-
-def get_worker_limits():
-    driver_limit = Config.get("system.driver_limit")
-
-    if str(driver_limit).lower() == "auto":
-        debug_logger.info("Driver pool configured with driver_limit set to auto (unlimited scaling)")
-        return float('inf'), 100
-
-    driver_limit = int(driver_limit or 1)
-    debug_logger.info(f"Driver pool configured with driver_limit = {driver_limit}")
-    return driver_limit, driver_limit
 
 def task(task_data, driver):
     url = task_data.get("url")
@@ -36,6 +26,7 @@ def task(task_data, driver):
 def main():
     options = get_options()
 
+    # limts go off system.driver_limit
     max_drivers, max_workers = get_worker_limits()
 
     driver_pool = get_driver_pool(
