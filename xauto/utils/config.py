@@ -63,6 +63,23 @@ class Config:
         config_dict = dict(self._config) if self._frozen else self._config
         return config_dict.get(section, {})
     
+    def set(self, key_path: str, value: Any) -> None:
+        with self._lock:
+            if self._frozen:
+                raise RuntimeError("Cannot modify config: already frozen")
+
+            keys = key_path.split('.')
+            current = self._config
+
+            for key in keys[:-1]:
+                next_val = current.get(key)
+                if not isinstance(next_val, dict):
+                    next_val = {}
+                    current[key] = next_val  # type: ignore
+                current = next_val
+
+            current[keys[-1]] = value  # type: ignore
+
     def has_key(self, key_path: str) -> bool:
         keys = key_path.split('.')
         config_dict = dict(self._config) if self._frozen else self._config
