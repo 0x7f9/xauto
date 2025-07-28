@@ -23,7 +23,7 @@ config.freeze()
 
 # get browser options with anti detection features
 options = get_options()
-# includes: headless mode, private browsing, fingerprinting resistance,
+# includes: private browsing, fingerprinting resistance,
 # disabled automation flags, cache disabled, notifications disabled
 
 # create a thread safe driver pool
@@ -92,7 +92,6 @@ def your_task_function(task_data, driver):
 
 # setup runtime with 5 workers
 task_manager, driver_pool = setup_runtime(
-    worker_count=5,
     task_processor=your_task_function
 )
 
@@ -151,6 +150,26 @@ finally:
 
 ## Core Utilities
 
+### JavaScript API Injection
+
+```python
+from xauto.utils.injection import ensure_injected
+
+driver.get("https://example.com")
+
+# core utilities like wait_for_page_load already call ensure_injected internally
+# ensure internal JS API is injected into the page
+ensure_injected(driver)
+```
+> APIs can be extended to support DOM traversal, element extraction, in page URL parsing, etc.
+
+Currently, the API provides:
+
+- `waitForReady()` — waits until the page is fully loaded, and no pending JS requests are active. Does not account for fetch() yet.
+- Injection state tracking via `data-injected` attribute
+- Safe reinjection on navigation or dynamic DOM reloads
+- window._xautoAPI is frozen and hidden from enumeration
+
 ### Driver Pool Management
 ```python
 from xauto.internal.geckodriver.driver import get_driver_pool
@@ -187,17 +206,42 @@ print(f"Memory usage: {stats.memory_percent}%")
 print(f"CPU usage: {stats.cpu_percent}%")
 ```
 
-### Browser Error Detection
+### Browser Validation Checks
 ```python
-from xauto.utils.setup import is_browser_error_page
-
+from xauto.utils.validation import is_browser_error_page
 if is_browser_error_page(driver):
     print("Browser error page detected")
     # handle error page here
 
+from xauto.utils.validation import is_connection_error
 if is_connection_error(error):
     print("Browser connection error detected")
     # handle connection error here
+
+from xauto.utils.validation import is_bot_page
+if is_bot_page(driver, url):
+    print("Browser bot page detected")
+    # handle bot page error here
+
+```
+
+### Browser Page Loading
+```python
+from xauto.utils.page_loading import wait_for_page_load
+# ensure_body_loaded is called inside of wait_for_page_load
+if not wait_for_page_load(driver, timeout=):
+    print("Page failed to load")
+    # handle page loading error here
+
+from xauto.utils.page_loading import ensure_body_loaded
+if not ensure_body_loaded(driver, timeout=):
+    print("Page body failed to load")
+    # handle page loading error here
+
+from xauto.utils.page_loading import explicit_page_load
+if not explicit_page_load(driver, timeout=):
+    print("Page did not load after a explict wait")
+    # handle page loading error here
 ```
 
 ### Thread Safe Utilities
@@ -226,6 +270,8 @@ counter.increment()
 - **Browser Error Detection**: Built in detection of browser error pages
 - **Generic Infrastructure**: Designed for any web automation task, not just scraping
 - **Logging**: Multiple log levels and output files
+- **JavaScript API Injection**: Custom browser API (_xautoAPI)
+- **Bot Detection**: Able to detect pages with bot challenges for handling or bypass logic
 
 ## Installation
 
@@ -254,7 +300,6 @@ The application is configured via `settings.yaml`. Key configuration sections:
 ### System Settings
 ```yaml
 system:
-  auto_run: false
   driver_limit: auto  # or specific number
   headless: false
 ```
@@ -277,6 +322,7 @@ resources:
 ```yaml
 misc:
   timeouts:
+    body_load: 10
     max_task_retries: 2
     shutdown: 10
     worker: 5
