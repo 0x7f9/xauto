@@ -48,20 +48,22 @@ def force_kill_thread(thread_key: str) -> None:
         finally:
             _thread_state[thread_key] = None
 
-def setup_runtime(worker_count: int, task_processor: Callable, creds: Optional[list] = None) -> Tuple[TaskManager, Any]:
-    options = get_options()
+def get_worker_limits():
     driver_limit = Config.get("system.driver_limit")
 
-    if isinstance(driver_limit, str) and driver_limit.lower() == "auto":
-        driver_pool_max_size = float('inf')
-        max_workers = 100
-        debug_logger.info("Driver pool configured with driver_limit = auto (unlimited scaling)")
-    else:
-        driver_pool_max_size = max(worker_count, int(driver_limit) if driver_limit is not None else worker_count)
-        max_workers = worker_count
-        debug_logger.info(f"Driver pool configured with driver_limit = {driver_pool_max_size}")
+    if str(driver_limit).lower() == "auto":
+        debug_logger.info("Driver pool configured with driver_limit set to auto (unlimited scaling)")
+        return float('inf'), 100
+
+    limit = int(driver_limit or 1)
+    debug_logger.info(f"Driver pool configured with driver_limit = {driver_limit}")
+    return limit, limit
+
+def setup_runtime(task_processor: Callable, creds: Optional[list] = None) -> Tuple[TaskManager, Any]:
+    options = get_options()
+    driver_pool_max_size, max_workers = get_worker_limits()
     
-    debug_logger.debug(f"CHECKPOINT: setup_runtime (worker_count={worker_count}, driver_limit={driver_limit}, max_size={driver_pool_max_size})")
+    debug_logger.debug(f"CHECKPOINT: setup_runtime (driver_pool_max_size={driver_pool_max_size}, max_workers={max_workers})")
     
     driver_pool = get_driver_pool(
         max_size=driver_pool_max_size,
@@ -74,7 +76,7 @@ def setup_runtime(worker_count: int, task_processor: Callable, creds: Optional[l
         max_workers=max_workers,
         creds=creds
     )
-    task_manager.start(initial_workers=worker_count)
+    task_manager.start()
     
     start_time = None
     tasks = None
