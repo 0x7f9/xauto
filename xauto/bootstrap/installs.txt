@@ -5,5 +5,5 @@ blinker==1.6.2
 termcolor
 requests
 psutil
-urllib3
+lxml
 pyyaml
