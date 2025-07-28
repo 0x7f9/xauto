@@ -2,7 +2,8 @@
 
 from xauto.utils.logging import debug_logger
 from xauto.utils.config import Config
-from xauto.utils.setup import debug, is_connection_error
+from xauto.utils.setup import debug
+from xauto.utils.validation import is_connection_error
 from xauto.internal.memory import acquire_driver_with_pressure_check
 
 import time
