@@ -222,6 +222,7 @@ def _calculate_cpu_percent(prev: Tuple[int, ...], curr: Tuple[int, ...]) -> floa
         return 0.0
     return (1.0 - (idle_delta / total_delta)) * 100.0
 
+
 class MemoryMonitor:
     __slots__ = (
         '_cache_duration', '_max_history', '_memory_threshold', '_cpu_threshold',

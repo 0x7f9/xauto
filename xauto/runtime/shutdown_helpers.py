@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
-from typing import Callable, Any
 from xauto.utils.logging import debug_logger, monitor_details
 from xauto.utils.setup import debug
+
+from typing import Callable, Any
 
 def shutdown_component(name: str, close_fn: Callable) -> None:
     monitor_details.info(f"{name}: shutting down")

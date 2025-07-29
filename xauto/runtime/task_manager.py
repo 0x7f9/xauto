@@ -1,30 +1,17 @@
-from xauto.utils.worker import Worker, TaskWrapper
+#!/usr/bin/env python3
+
+from xauto.runtime.worker import Worker
+from xauto.internal.dataclasses import TaskWrapper
 from xauto.internal.geckodriver.driver import DriverPool
-from xauto.internal.thread_safe import ThreadSafeList
+from xauto.internal.thread_safe import ThreadSafeList, SafeThread
 from xauto.utils.logging import debug_logger, monitor_details
 from xauto.utils.config import Config
-from xauto.utils.shutdown_helpers import shutdown_component
 from xauto.utils.setup import debug
 
 from typing import Optional, Callable, Any, Iterable
 import threading
 import queue
 import time
-
-class SafeThread(threading.Thread):
-    def __init__(self, target_fn=None, name=None, **kwargs):
-        super().__init__(name=name, daemon=True)
-        self._fn = target_fn
-        self._args = ()
-        self._kwargs = kwargs
-        
-    def run(self):
-        try:
-            if self._fn:
-                self._fn(**self._kwargs)
-        except Exception as e:
-            fn_name = getattr(self._fn, '__name__', 'unknown_function') if self._fn else 'unknown_function'
-            debug_logger.error(f"Thread error in {fn_name}: {e}", exc_info=debug)
 
 class TaskManager:
     __slots__ = (

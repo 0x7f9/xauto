@@ -1,8 +1,27 @@
 #!/usr/bin/env python3
 
+from xauto.utils.logging import debug_logger
+from xauto.utils.setup import debug
+
 from typing import Any, List, Optional, Iterator
 from collections import deque
 import threading
+
+class SafeThread(threading.Thread):
+    def __init__(self, target_fn=None, name=None, **kwargs):
+        super().__init__(name=name, daemon=True)
+        self._fn = target_fn
+        self._args = ()
+        self._kwargs = kwargs
+        
+    def run(self):
+        try:
+            if self._fn:
+                self._fn(**self._kwargs)
+        except Exception as e:
+            fn_name = getattr(self._fn, '__name__', 'unknown_function') if self._fn else 'unknown_function'
+            debug_logger.error(f"Thread error in {fn_name}: {e}", exc_info=debug)
+
 
 class AtomicCounter:
     def __init__(self, initial_value: int = 0):
@@ -93,6 +112,7 @@ class ThreadSafeList:
                 self._list.append(item)
                 while len(self._list) > max_size:
                     self._list.pop(0)
+
 
 class ThreadSafeSet:
     def __init__(self, iterable=None):

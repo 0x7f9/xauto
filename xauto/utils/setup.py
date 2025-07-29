@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 
 from xauto.utils.config import Config
-from xauto.internal.thread_safe import ThreadSafeDict
 
 import random
-import re
 import os
 import sys
 import tempfile
@@ -181,12 +179,3 @@ def get_options():
 
 def get_random_user_agent():
     return random.choice(list(USER_AGENTS.values()))
-
-stop = threading.Event()
-_thread_safe_state = ThreadSafeDict()
-
-def get_thread_safe_value(key):
-    return _thread_safe_state.get(key)
-
-def set_thread_safe_value(key, value):
-    _thread_safe_state[key] = value

@@ -2,19 +2,19 @@
 
 from xauto.utils.logging import debug_logger
 from xauto.utils.config import Config
-from xauto.utils.task_manager import TaskManager, SafeThread
-from xauto.utils.setup import get_options, stop, debug
+from xauto.runtime.task_manager import TaskManager, SafeThread
+from xauto.utils.setup import get_options, debug
 from xauto.utils.common import status_monitor
-from xauto.utils.shutdown_helpers import shutdown_component_with_timeout
+from xauto.runtime.shutdown_helpers import shutdown_component_with_timeout
 from xauto.internal.geckodriver.driver import get_driver_pool
 from xauto.internal.memory import resource_pressure_monitor, cleanup_memory_monitor, check_consistency_patterns
 from xauto.internal.thread_safe import ThreadSafeDict
 
-import sys
 from typing import Callable, Optional, Any, Tuple
-from termcolor import cprint
+import threading
 
 _thread_state = ThreadSafeDict()
+stop = threading.Event()
 
 def is_thread_healthy(thread_key: str) -> bool:
     thread = _thread_state.get(thread_key)

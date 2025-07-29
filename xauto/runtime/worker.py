@@ -10,14 +10,6 @@ import time
 import threading
 import traceback
 
-class TaskWrapper:
-    __slots__ = ('task', 'retry_count')
-    
-    def __init__(self, task):
-        self.task = task
-        self.retry_count = 0
-
-
 class Worker(threading.Thread):
     __slots__ = (
         'task_queue', 'driver_pool', 'per_task_fn', 'daemon', 
