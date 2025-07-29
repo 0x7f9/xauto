@@ -1,65 +1,13 @@
 from xauto.utils.logging import debug_logger
 from selenium.common.exceptions import WebDriverException
+from pathlib import Path
 
-_XAUTO_API_JS = """
-(function() {
-  const API = {};
+_XAUTO_PATH = Path("xauto/internal/js/xauto_api.js")
 
-  API.waitForReady = (maxWait = 10000, idleWindow = 200) => {
-    return new Promise(resolve => {
-      const start = Date.now();
+if not _XAUTO_PATH.is_file():
+    raise FileNotFoundError(f"Missing API file: {_XAUTO_PATH.resolve()}")
 
-      function checkReady() {
-        const ready = document.readyState === 'complete';
-        const pending = typeof window.__pendingRequests === 'number' ? window.__pendingRequests : 0;
-
-        if (ready && pending === 0) {
-          const idleStart = Date.now();
-
-          (function idleCheck() {
-            const stillPending = typeof window.__pendingRequests === 'number' ? window.__pendingRequests : 0;
-            const idleTime = Date.now() - idleStart;
-
-            if (stillPending === 0 && idleTime >= idleWindow) {
-              return resolve(true);
-            }
-
-            if (Date.now() - start < maxWait) {
-              return setTimeout(idleCheck, 50);
-            }
-
-            return resolve(false); // timeout fallback
-          })();
-
-          return;
-        }
-
-        if (Date.now() - start < maxWait) {
-          return setTimeout(checkReady, 100);
-        }
-
-        resolve(false);
-      }
-
-      checkReady();
-    });
-  };
-
-  // Object.freeze(stealthPatches);
-  Object.freeze(API);
-  // Object.freeze(window.openedWindows);
-
-  Object.defineProperty(window, '_xautoAPI', {
-    value: API,
-    configurable: false,
-    writable: false,
-    enumerable: false
-  });
-
-  window._injectionTime = performance.now();
-  document.documentElement.setAttribute("data-injected", "1");
-})();
-"""
+_XAUTO_API = _XAUTO_PATH.read_text(encoding="utf-8")
 
 def ensure_injected(driver):
     curr = driver.current_url
@@ -84,7 +32,7 @@ def ensure_injected(driver):
 def _inject_api(driver):
     try:
         exe = driver.execute_script
-        exe(_XAUTO_API_JS)
+        exe(_XAUTO_API)
 
         injected = bool(driver.execute_script(
             "return document.documentElement.getAttribute('data-injected')")

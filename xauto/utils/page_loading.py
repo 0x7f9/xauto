@@ -10,9 +10,9 @@ import time
 _LOAD_TIME = "return window.performance.timing.loadEventEnd - window.performance.timing.navigationStart"
 
 @require_connected(False)
-def explicit_page_load(driver, timeout=None):
-    # driver is used for require_connected check
-    timeout = timeout or Config.get("misc.timeouts.body_load")
+def explicit_page_load(driver, wait_for=None):
+    # driver is needed for require_connected check
+    timeout = wait_for or Config.get("misc.timeouts.body_load")
     end_time = time.time() + timeout
 
     while time.time() < end_time:
@@ -29,18 +29,14 @@ def wait_for_page_load(driver, timeout=None):
 
     ensure_injected(driver)
 
-    injected = bool(driver.execute_script(
-        "return document.documentElement.getAttribute('data-injected')"))
-
-    if injected:
-        try:
-            js_timeout_ms = int(timeout * 1000)
-            driver.execute_script(f"return window._xautoAPI.waitForReady({js_timeout_ms})")
-            load_time = driver.execute_script(_LOAD_TIME) / 1000.0
-            debug_logger.debug(f"[PAGE_LOAD] Load time: {load_time:.2f}s")
-            return True
-        except Exception as e:
-            debug_logger.debug(f"[PAGE_LOAD] Promise wait failed: {e}")
+    try:
+        timeout = int(timeout * 1000)
+        driver.execute_script(f"return window._xautoAPI.waitForReady({timeout})")
+        load_time = driver.execute_script(_LOAD_TIME) / 1000.0
+        debug_logger.debug(f"[PAGE_LOAD] Load time: {load_time:.2f}s")
+        return True
+    except Exception as e:
+        debug_logger.debug(f"[PAGE_LOAD] Promise wait failed: {e}")
 
     return False
 
