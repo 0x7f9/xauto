@@ -31,6 +31,7 @@ def get_driver_pool(max_size, firefox_options, force_reset=False):
 
 class _DriverInfo:
     __slots__ = ('pids', 'last_access', 'heap_timestamp', 'failure_count')
+    
     def __init__(self, pids):
         self.pids = pids
         self.last_access = time.monotonic()
@@ -150,7 +151,7 @@ class DriverPool:
         scheme = "socks5" if self.socks5 else "http"
         return f"{scheme}://{creds}{host}:{port}"
 
-    def create_driver(self):
+    def _create_driver(self):
         driver_opts = self._base_opts_copy.copy() if hasattr(self._base_opts_copy, 'copy') else self._base_opts_copy
         driver_opts.set_preference("general.useragent.override", get_random_user_agent())
 
@@ -227,7 +228,7 @@ class DriverPool:
     def _create_driver_with_retries(self, max_retries=3, backoff=1.0):
         for attempt in range(max_retries):
             try:
-                driver = self.create_driver()
+                driver = self._create_driver()
                 if driver is not None:
                     return driver
                 raise RuntimeError("Driver creation returned None")
