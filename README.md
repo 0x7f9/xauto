@@ -1,21 +1,14 @@
 # Selenium WebDriver Infrastructure
 
-This repository provides a generic Selenium WebDriver infrastructure in Python. It is designed for web automation tasks including scraping, form filling, and browser automation.
+This repository provides a Selenium WebDriver infrastructure in Python. It is designed for web automation tasks including scraping, form filling, and browser automation.
 
 ## Quick Usage Example
 
 ```python
-from xauto.bootstrap.build import bootstrap
-
-# bootstrap install.txt file
-if not bootstrap():
-    print("ERROR: Bootstrap failed. Cannot proceed.")
-    import sys; sys.exit(1)
-
 from xauto.utils.config import Config
 from xauto.utils.setup import get_options
 from xauto.internal.geckodriver.driver import get_driver_pool
-from xauto.utils.task_manager import TaskManager
+from xauto.runtime.task_manager import TaskManager
 
 # initialize configuration you can freeze it also
 config = Config()
@@ -23,17 +16,12 @@ config.freeze()
 
 # get browser options with anti detection features
 options = get_options()
-# includes: private browsing, fingerprinting resistance,
-# disabled automation flags, cache disabled, notifications disabled
 
 # create a thread safe driver pool
 driver_pool = get_driver_pool(max_size=10, firefox_options=options)
 
 # define a task for the workers
 def your_task_function(task_data, driver):
-    """
-    The function each worker thread will run.
-    """
     url = task_data.get('url')
     driver.get(url)
     # add your scraping or automation logic here
@@ -74,7 +62,7 @@ For simplicity and minimal boilerplate, the recommended approach is to use the `
 
 ```python
 from xauto.utils.config import Config
-from xauto.utils.lifecycle import setup_runtime, teardown_runtime
+from xauto.runtime.lifecycle import setup_runtime, teardown_runtime
 
 # initialize configuration
 config = Config()
@@ -82,9 +70,6 @@ config.freeze()
 
 # define your task function
 def your_task_function(task_data, driver):
-    """
-    The function each worker thread will run.
-    """
     url = task_data.get('url')
     driver.get(url)
     # add your scraping or automation logic here
@@ -112,42 +97,6 @@ The `setup_runtime()` function automatically:
 - Handles configuration and logging setup
 - Returns ready to use task_manager and driver_pool objects
 
-## Simple Direct Usage
-
-For single tasks or simple automation, you can use the driver pool directly without the task manager:
-
-```python
-from xauto.utils.setup import get_options, is_browser_error_page
-from xauto.internal.geckodriver.driver import get_driver_pool
-
-options = get_options()
-
-driver_pool = get_driver_pool(max_size=1, firefox_options=options)
-driver = None
-
-try:
-    driver = driver_pool.get_driver()
-    if driver is None:
-        print("ERROR: Failed to acquire driver")
-        sys.exit(1)
-    
-    # logic here
-    driver.get("https://example.com")
-    
-    if is_browser_error_page(driver):
-        print("Browser error page detected")
-        return
-    
-    # continue with your logic...
-    
-except Exception as e:
-    print(f"ERROR: Task failed due to: {e}")
-finally:
-    if driver is not None:
-        driver_pool.return_driver(driver)
-    driver_pool.shutdown()
-```
-
 ## Core Utilities
 
 ### JavaScript API Injection
@@ -165,10 +114,10 @@ ensure_injected(driver)
 
 Currently, the API provides:
 
-- `waitForReady()` — waits until the page is fully loaded, and no pending JS requests are active. Does not account for fetch() yet.
+- `waitForReady()` — waits for full document readiness and 70% of network requests to complete.
 - Injection state tracking via `data-injected` attribute
 - Safe reinjection on navigation or dynamic DOM reloads
-- window._xautoAPI is frozen and hidden from enumeration
+- Code is frozen and hidden from enumeration
 
 ### Driver Pool Management
 ```python
@@ -177,11 +126,12 @@ from xauto.internal.geckodriver.driver import get_driver_pool
 # create driver pool
 driver_pool = get_driver_pool(max_size=10, firefox_options=options)
 
-# driver management methods
+# helpful methods
 driver = driver_pool.get_driver(timeout=30)  
 driver_pool.return_driver(driver)          
 driver_pool.mark_driver_failed(driver)      
-driver_pool.cleanup_idle_drivers(max_idle_time=30) 
+driver_pool.cleanup_idle_drivers(max_idle_time=30)
+driver_pool.should_close_driver_for_pressure(cooldown_seconds=15)
 
 # get pool stats
 stats = driver_pool.get_pool_stats()
@@ -239,7 +189,7 @@ if not ensure_body_loaded(driver, timeout=):
     # handle page loading error here
 
 from xauto.utils.page_loading import explicit_page_load
-if not explicit_page_load(driver, timeout=):
+if not explicit_page_load(driver, wait_for=):
     print("Page did not load after a explict wait")
     # handle page loading error here
 ```
@@ -247,7 +197,6 @@ if not explicit_page_load(driver, timeout=):
 ### Thread Safe Utilities
 ```python
 from xauto.internal.thread_safe import ThreadSafeList, ThreadSafeDict, AtomicCounter
-
 safe_list = ThreadSafeList()
 safe_dict = ThreadSafeDict()
 counter = AtomicCounter()
@@ -255,11 +204,18 @@ counter = AtomicCounter()
 safe_list.append(item)
 safe_dict[key] = value
 counter.increment()
+
+from xauto.internal.thread_safe import SafeThread
+thread = SafeThread(
+    target_fn=dummy_function,
+    name="DummyName"
+)
+thread.start()
 ```
 
 ## Features
 
-- **Thread Safe WebDriver Pool**: Enables management of multiple browser instances
+- **Thread Safety**: Uses SafeThread wrappers to isolate thread crashes from the main event loop
 - **Resource Monitoring**: Real time memory and CPU pressure monitoring
 - **Auto scaling**: Driver pool scales based on system feedback
 - **Graceful Shutdown**: Cleanup and resource management
