@@ -11,10 +11,10 @@ if not bootstrap():
 
 from xauto.utils.config import Config
 from xauto.utils.setup import get_options
-from xauto.utils.lifecycle import get_worker_limits
-from xauto.internal.geckodriver.driver import get_driver_pool
-from xauto.utils.task_manager import TaskManager
 from xauto.utils.logging import debug_logger
+from xauto.runtime.lifecycle import get_worker_limits
+from xauto.runtime.task_manager import TaskManager
+from xauto.internal.geckodriver.driver import get_driver_pool
 
 config = Config()
 config.freeze()

@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
+
 import os
 import sys
-
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from xauto.bootstrap.build import bootstrap
 if not bootstrap():
-    print("ERROR: Bootstrap failed. Cannot proceed.")
+    print("Bootstrap failed")
     sys.exit(1)
 
 from xauto.utils.setup import get_options
-from xauto.internal.geckodriver.driver import get_driver_pool
 from xauto.utils.page_loading import wait_for_page_load
 from xauto.utils.validation import is_bot_page
+from xauto.internal.geckodriver.driver import get_driver_pool
+
 from selenium.webdriver.common.by import By
 from time import sleep
-import os
 
 TOKEN = os.environ.get("MULLVAD_ACCOUNT")
 if not TOKEN:
@@ -51,7 +51,10 @@ def login_to_mullvad(driver):
 
 def revoke_devices(driver):
     driver.get("https://mullvad.net/en/account/devices")
-    sleep(2)
+
+    if not wait_for_page_load(driver):
+        print("Page did not load")
+        return
 
     from xauto.utils.validation import is_browser_error_page
     if is_browser_error_page(driver):
