@@ -9,8 +9,12 @@ if not _XAUTO_PATH.is_file():
 
 _XAUTO_API = _XAUTO_PATH.read_text(encoding="utf-8")
 
-def ensure_injected(driver):
-    curr = driver.current_url
+def ensure_injected(driver) -> bool:
+    try:
+        curr = driver.current_url
+    except Exception:
+        return False
+
     if curr != getattr(driver, "_last_url", None):
         driver._is_injected = False
         driver._last_url = curr
@@ -24,12 +28,22 @@ def ensure_injected(driver):
             driver._is_injected = False
 
     injected = bool(driver.execute_script(
-        "return document.documentElement.getAttribute('data-injected')"))
+        "return document.documentElement.getAttribute('data-injected')")
+    )
 
     if not injected and not getattr(driver, "_is_injected", False):
-        _inject_api(driver)
+        success = _inject_api(driver)
+        if success:
+            driver._is_injected = True
+            return True
+        else:
+            driver._is_injected = False
+            return False
 
-def _inject_api(driver):
+    driver._is_injected = True
+    return True
+
+def _inject_api(driver) -> bool:
     try:
         exe = driver.execute_script
         exe(_XAUTO_API)
