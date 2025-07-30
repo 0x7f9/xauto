@@ -80,6 +80,7 @@ misc:
   # default timeouts
   timeouts:
     body_load: 10
+    url_loading: 5
     max_task_retries: 2
     shutdown: 10
     join: 10
