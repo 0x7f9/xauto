@@ -16,8 +16,9 @@ ensure_injected(driver)
 
 Currently, the API provides:
 
-- `waitForReady()` - waits for full document readiness and 70% of `fetch()` requests to complete.
-- `closePopups()` - attempts to close any windows stored in `window.openedWindows` that are not the original tab.
+- `waitForReady()` - waits for full document readiness and 70% of `fetch()` requests to complete
+- `closePopups()` - attempts to close any windows stored in `window.openedWindows` that are not the original tab
+- `stealthPatches()` - actively masks common browser automation fingerprints such as `navigator.webdriver`, plugins, etc
 - Injection state tracking via `data-injected` attribute
 - Safe reinjection on navigation or dynamic DOM reloads
 - Code is frozen and hidden from enumeration
