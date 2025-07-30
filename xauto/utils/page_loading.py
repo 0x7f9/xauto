@@ -32,8 +32,7 @@ def wait_for_page_load(driver, timeout=None) -> bool:
     if not ensure_body_loaded(driver, timeout=timeout):
         return False
 
-    injected = ensure_injected(driver)
-    if not injected:
+    if not ensure_injected(driver):
         debug_logger.debug("Could not procced with [wait_for_page_load] due to failed injection")
         return False
 
