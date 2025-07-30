@@ -8,26 +8,24 @@ import functools
 import os
 import mmap
 
-def check_driver_liveness(driver):
+def check_driver_liveness(driver) -> bool:
     try:
-        _ = driver.current_url
+        driver.execute_script("return 1")
         return True
     except WebDriverException as e:
         debug_logger.debug(f"Driver liveness check failed – session dead: {e}")
         return False
 
-
-def require_connected(default_return):
+def require_connected(default: bool):
     def decorator(fn):
         @functools.wraps(fn)
-        def wrapper(driver, *args, **kwargs):
+        def wrapper(driver, *args, **kwargs) -> bool:
             if not check_driver_liveness(driver):
                 debug_logger.debug(f"{fn.__name__}: driver not connected or dead, skipping")
-                return default_return
-            return fn(driver, *args, **kwargs)
+                return default
+            return bool(fn(driver, *args, **kwargs))
         return wrapper
     return decorator
-
 
 def fnv1a_hash(key: Any) -> int:
     key_str = str(key)
@@ -42,27 +40,23 @@ def fnv1a_hash(key: Any) -> int:
         h &= 0xffffffffffffffff
     return h 
 
-
 def open_file_ro(path: str) -> Optional[int]:
     try:
         return os.open(path, os.O_RDONLY | os.O_CLOEXEC)
     except OSError:
         return None
-    
 
 def open_file_rw(path: str, mode: int = 0o600) -> Optional[int]:
     try:
         return os.open(path, os.O_CREAT | os.O_RDWR | os.O_CLOEXEC, mode)
     except OSError:
         return None
-
     
 def create_memory_mapped_file(fd: int, size: int, access: int = mmap.ACCESS_WRITE) -> Optional[mmap.mmap]:
     try:
         return mmap.mmap(fd, size, access=access)
     except OSError:
         return None
-
     
 def truncate_file(fd: int, size: int) -> bool:
     try:
@@ -70,7 +64,6 @@ def truncate_file(fd: int, size: int) -> bool:
         return True
     except OSError:
         return False
-
 
 def read_wordlist(filepath):
     wordlist = set()
@@ -89,18 +82,4 @@ def read_wordlist(filepath):
     except OSError:
         pass 
     return wordlist
-
-
-# def read_wordlist(filepath):
-#     wordlist = set()
-#     if not os.path.exists(filepath):
-#         print(f"File not found {filepath}")
-#         return wordlist 
-#     with open(filepath, "r") as f:
-#         for line in f:
-#             line = line.strip().lower()
-#             if not line or line.startswith("#"):
-#                 continue
-#             wordlist.add(line)
-#     return wordlist
 
