@@ -74,6 +74,21 @@
     });
   };
 
+  API.closePopups = () => {
+    const closed = [];
+    const openedWindows = window.openedWindows || [];
+    for (const h of openedWindows) {
+      try {
+        h.close();
+        closed.push(h);
+      } catch (e) {}
+    }
+    if (window.openedWindows) {
+      window.openedWindows = window.openedWindows.filter(w => !closed.includes(w));
+    }
+    return closed.length;
+  };
+
   Object.freeze(API);
   Object.defineProperty(window, '_xautoAPI', {
     value: API,
