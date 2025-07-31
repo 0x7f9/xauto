@@ -8,8 +8,8 @@ This repository provides a Selenium WebDriver infrastructure in Python. It is de
 
 ```python
 from xauto.utils.injection import ensure_injected
-# core utilities already call ensure_injected internally
-# ensure internal JS API is injected into the page
+# core utilities call ensure_injected internally
+# injects internal JS API into the page
 ensure_injected(driver)
 ```
 > APIs can be extended to support DOM traversal, element extraction, in page URL parsing, etc.
@@ -17,8 +17,8 @@ ensure_injected(driver)
 Currently, the API provides:
 
 - `waitForReady()` - waits for full document readiness and 70% of `fetch()` requests to complete
-- `closePopups()` - attempts to close any windows stored in `window.openedWindows` that are not the original tab
-- `stealthPatches()` - actively masks common browser automation fingerprints such as `navigator.webdriver`, plugins, etc
+- `closePopups()` - attempts to close all tabs in `window.openedWindows` that are not the original tab
+- `stealthPatches()` - masks common browser automation fingerprints such as navigator, plugins, etc
 - Injection state tracking via `data-injected` attribute
 - Safe reinjection on navigation or dynamic DOM reloads
 - Code is frozen and hidden from enumeration
@@ -90,7 +90,7 @@ if is_bot_page(driver, url):
 ```python
 from xauto.utils.browser_utils import close_popups
 # closes all tabs in window.openedWindows that are not the original tab
-# for cleaning up popups or new tabs triggered by (window.open) during automation
+# for cleaning up popups or new tabs triggered by window.open during automation
 # close_popups is called internally by all page loading functions
 close_popups(driver)
 
@@ -152,10 +152,10 @@ if not bootstrap():
 ```
 
 The bootstrap system will:
-1. Create a virtual environment
-2. Install required dependencies
-3. Download GeckoDriver
-4. Initialize the WebDriver infrastructure
+1. Check python version is compatible 
+2. Download GeckoDriver
+3. Create a virtual environment
+4. Install required dependencies
 
 ## Features
 
