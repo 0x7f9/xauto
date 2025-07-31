@@ -4,9 +4,20 @@ from xauto.utils.logging import debug_logger
 
 from selenium.common.exceptions import WebDriverException
 from typing import Any, Optional
+from contextlib import contextmanager
 import functools
 import os
 import mmap
+
+@contextmanager
+def iframe_context(driver, iframe):
+    if iframe:
+        driver.switch_to.frame(iframe)
+    try:
+        yield
+    finally:
+        if iframe:
+            driver.switch_to.default_content()
 
 def check_driver_liveness(driver) -> bool:
     try:
