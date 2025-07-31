@@ -3,17 +3,17 @@
   function stealthPatches() {
     const stealthPatches = {
       webdriver: () => false,
+
       plugins: () => [
-        { name: "Chrome PDF Viewer", filename: "internal-pdf-viewer", description: "Portable Document Format" },
-        { name: "Chrome Web Store Payments", filename: "internal-nacl-plugin", description: "Native Client Executable" },
-        { name: "Native Client", filename: "internal-nacl-plugin", description: "Native Client Executable" }
+        { name: "Widevine Content Decryption Module", filename: "libwidevinecdm.so", description: "Enables Widevine licenses" },
+        { name: "OpenH264 Video Codec", filename: "openh264.xpt", description: "H.264 support from Cisco" }
       ],
+
       languages: () => ['en-US', 'en']
     };
 
     Object.freeze(stealthPatches); 
-    stealthPatches.plugins().forEach(p => Object.freeze(p));
-    Object.freeze(stealthPatches.plugins());
+    stealthPatches.plugins().forEach(Object.freeze);
 
     try { delete Navigator.prototype.webdriver; } catch (e) {}
 
@@ -24,8 +24,13 @@
       });
     });
 
-    if (navigator.userAgent.includes('Firefox') && !window.chrome) {
-      window.chrome = Object.freeze({ runtime: {} });
+    for (const prop of [
+      '__driver_evaluate',
+      '__$webdriverAsyncExecutor',
+      '__webdriver_script_fn',
+      '__lastWatirAlert'
+    ]) {
+      try { delete window[prop]; } catch (e) {}
     }
   }
 
@@ -68,12 +73,14 @@
     API.waitForReady = (maxWait = 10000, idleWindow = 200, threshold = 0.7) => {
       return new Promise(resolve => {
         const start = Date.now();
+
         function checkReady() {
           const ready = document.readyState === 'complete';
           const percentDone = totalRequests === 0 ? 1 : completedRequests / totalRequests;
 
           if (ready && percentDone >= threshold) {
             const idleStart = Date.now();
+
             (function idleCheck() {
               const idleTime = Date.now() - idleStart;
               const percent = totalRequests === 0 ? 1 : completedRequests / totalRequests;
@@ -82,6 +89,7 @@
               if (Date.now() - start < maxWait) return setTimeout(idleCheck, 50);
               return resolve(false);
             })();
+
             return;
           }
 
@@ -96,15 +104,18 @@
     API.closePopups = () => {
       const closed = [];
       const openedWindows = window.openedWindows || [];
+
       for (const h of openedWindows) {
         try {
           h.close();
           closed.push(h);
         } catch (e) {}
       }
+
       if (window.openedWindows) {
         window.openedWindows = window.openedWindows.filter(w => !closed.includes(w));
       }
+
       return closed.length;
     };
 
@@ -113,14 +124,16 @@
     window._xautoDebug ??= false;
 
     if (!window.__xautoOpenHooked) {
-      window.__xautoOpenHooked = true;
       const origWindowOpen = window.open;
       window.open = function (...args) {
         window._popupCount++;
         const popup = origWindowOpen.apply(this, args);
-        if (popup) window.openedWindows.push(popup);
+        if (popup) {
+          window.openedWindows.push(popup);
+        }
         return popup;
       };
+      window.__xautoOpenHooked = true;
     }
 
     Object.freeze(API);
