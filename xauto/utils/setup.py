@@ -7,7 +7,6 @@ import os
 import sys
 import tempfile
 import logging
-import threading
 import urllib.request
 import tarfile
 from selenium.webdriver.firefox.options import Options
@@ -22,20 +21,20 @@ def check_python_version(required_version_str):
         sys.exit(1)
 
 def download_geckodriver(version):
-    geckodriver_path = "lib/internal/geckodriver/geckodriver"
+    geckodriver_path = "xauto/internal/geckodriver/geckodriver"
     
     if os.path.exists(geckodriver_path):
         # print(f"Geckodriver already exists at {geckodriver_path}")
         return
     
     url = f"https://github.com/mozilla/geckodriver/releases/download/v{version}/geckodriver-v{version}-linux64.tar.gz"
-    download_path = f"lib/internal/geckodriver/geckodriver-v{version}-linux64.tar.gz"
+    download_path = f"xauto/internal/geckodriver/geckodriver-v{version}-linux64.tar.gz"
     
     print(f"Downloading geckodriver v{version}...")
     urllib.request.urlretrieve(url, download_path)
     
     with tarfile.open(download_path, 'r:gz') as tar:
-        tar.extractall("lib/internal/geckodriver/")
+        tar.extractall("xauto/internal/geckodriver/")
     
     os.chmod(geckodriver_path, 0o755)
     os.remove(download_path)
