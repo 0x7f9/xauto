@@ -2,6 +2,7 @@
 
 from xauto.utils.config import Config
 from xauto.utils.setup import debug
+from xauto.utils.logging import debug_logger
 
 import os
 import time
@@ -17,26 +18,19 @@ def clear_debug_files():
         
         debug_files = [
             os.path.join(DEBUG_LOGS_DIR, "monitor_details.log"),
-            os.path.join(DEBUG_LOGS_DIR, "debug.log")
+            os.path.join(DEBUG_LOGS_DIR, "debug.log"),
+            os.path.join(DEBUG_LOGS_DIR, "debug_bot_detection.log")
         ]
         
         for debug_file in debug_files:
             if os.path.exists(debug_file):
-                try:
-                    os.remove(debug_file)
-                    monitor_details.info(f"Deleted debug file: {debug_file}")
-                except Exception as e:
-                    monitor_details.warning(f"Failed to delete debug file {debug_file}: {e}", exc_info=True)
-                    if debug:
-                        import traceback
-                        traceback.print_exc()
-        
+                os.remove(debug_file)
+
     except Exception as e:
-        print(f"Error deleting debug files: {e}")
+        debug_logger.error(f"Error deleting debug files: {e}")
         if debug:
             import traceback
             traceback.print_exc()
-
 
 def status_print(start_time=None, tasks=None, outcomes=None):
     try:
@@ -54,11 +48,10 @@ def status_print(start_time=None, tasks=None, outcomes=None):
         print(f"Invalid pages: {int(outcomes['invalid']) if 'invalid' in outcomes else 0}")
         
     except Exception as e:
-        print(f"Error in status_print: {e}")
+        debug_logger.error(f"Error in status_print: {e}")
         if debug:
             import traceback
             traceback.print_exc()
-
 
 def runtime_status(start_time=None, tasks=None, outcomes=None, driver_pool=None):
     try:
@@ -94,11 +87,10 @@ def runtime_status(start_time=None, tasks=None, outcomes=None, driver_pool=None)
         print(f"[STAT] {logline}")
         
     except Exception as e:
-        print(f"Error in runtime_status: {e}")
+        debug_logger.error(f"Error in runtime_status: {e}")
         if debug:
             import traceback
             traceback.print_exc()
-
 
 def status_monitor(stop_event=None, start_time=None, tasks=None, outcomes=None, driver_pool=None):
     if stop_event is None:
@@ -117,3 +109,4 @@ def status_monitor(stop_event=None, start_time=None, tasks=None, outcomes=None, 
                 runtime_status(start_time, tasks, outcomes, driver_pool)
         elif log_counter == 0 and Config.get("misc.logging.status_console"):
             runtime_status(start_time, tasks, outcomes, driver_pool)
+
