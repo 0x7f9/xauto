@@ -64,7 +64,8 @@ driver.get()
 
 from xauto.internal.memory import wait_high_load
 # blocks the threads runtime preventing url navigation or DOM traverals
-wait_high_load(self, context="driver.get() navigation")
+forced = wait_high_load(pool, context="validation.navigate", url=base_url)
+driver._forced_navigation = forced
 ```
 
 ### Browser Validation Checks
@@ -83,6 +84,21 @@ from xauto.utils.validation import is_bot_page
 if is_bot_page(driver, url):
     print("Browser bot page detected")
     # handle bot page error here
+```
+
+### Browser Handling
+```python
+from xauto.utils.browser_utils import close_popups
+# closes all tabs in window.openedWindows that are not the original tab
+# for cleaning up popups or new tabs triggered by (window.open) during automation
+# close_popups is called internally by all page loading functions
+close_popups(driver)
+
+from xauto.utils.browser_utils import send_key
+# sends keys to a form field with retry logic and optional iframe handling
+# check_url=True waits for a URL change after pressing RETURN
+send_key(driver, field, "username", check_url=False, iframe=iframe_element)
+send_key(driver, field, "password1", check_url=True, iframe=iframe_element)
 ```
 
 ### Browser Page Loading
@@ -104,9 +120,7 @@ if not explicit_page_load(driver, wait_for=):
     # handle page loading error here
 
 from xauto.utils.page_loading import wait_for_url_change
-field.send_keys(Keys.RETURN)
-# wait for URL to change
-# faster than waiting for the whole page to load
+# wait for a URL change after sending RETURN key
 wait_for_url_change(driver, old_url, wait_for=)
 ```
 
@@ -221,5 +235,5 @@ Core dependencies (see `bootstrap/installs.txt`):
 
 ## Disclaimer
 
-This infrastructure is designed for legitimate web automation tasks. Repository contains only the core infrastructure. The actual automation logic and credential processing components have been removed for privacy and security reasons.
+This infrastructure is designed for legitimate web automation tasks. Repository contains only the core infrastructure. The actual automation logic and credential processing components have been removed.
 
