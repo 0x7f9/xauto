@@ -149,11 +149,11 @@ def install_packages():
         return False
     
     logger.info("Installing required packages...")
-    print("Installing required packages. Using --quiet")
     try:
-        subprocess.run([PIP_EXE, "install", "--disable-pip-version-check", "--quiet", "--no-cache-dir", "-r", INSTALLS_FILE], 
+        subprocess.run([PIP_EXE, "install", "--disable-pip-version-check", "--no-cache-dir", "-r", INSTALLS_FILE], 
                                 check=True, capture_output=True, text=True)
         logger.info("Package installation completed")
+        print("Package installation completed")
         return True
         
     except subprocess.CalledProcessError as e:
@@ -227,6 +227,11 @@ def cleanup_bootstrap():
 def bootstrap():
     if is_in_venv() and is_venv_functional():
         return True
+    
+    from xauto.utils.config import Config
+    from xauto.utils.setup import check_python_version, download_geckodriver
+    check_python_version(Config.get("misc.python_version", "3.10"))
+    download_geckodriver(Config.get("misc.geckodriver_version", "0.35.0"))
     
     if not is_in_venv():
         # print(f"Not in virtual environment, switching to it...")
