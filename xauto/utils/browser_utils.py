@@ -2,7 +2,6 @@ from xauto.utils.config import Config
 from xauto.utils.logging import debug_logger
 from xauto.utils.utility import require_connected
 from xauto.utils.injection import ensure_injected
-from xauto.utils.page_loading import wait_for_url_change
 from xauto.utils.utility import iframe_context
 
 from selenium.webdriver.common.keys import Keys
@@ -62,6 +61,7 @@ def send_key(driver, field, keys, check_url=False, iframe=None):
 
                 if check_url and before:
                     field.send_keys(Keys.RETURN)
+                    from xauto.utils.page_loading import wait_for_url_change
                     wait_for_url_change(driver, before, wait_for=5)
 
                 return True
