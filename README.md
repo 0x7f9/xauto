@@ -30,11 +30,12 @@ from xauto.internal.geckodriver.driver import get_driver_pool
 driver_pool = get_driver_pool(max_size=10, firefox_options=options)
 
 # helpful methods
-driver = driver_pool.get_driver(timeout=30)  
+driver_pool.get_driver(timeout=)  
+driver_pool.get_driver_with_injection(timeout=)
 driver_pool.return_driver(driver)          
 driver_pool.mark_driver_failed(driver)      
-driver_pool.cleanup_idle_drivers(max_idle_time=30)
-driver_pool.should_close_driver_for_pressure(cooldown_seconds=15)
+driver_pool.cleanup_idle_drivers(max_idle_time=)
+driver_pool.should_close_driver_for_pressure(cooldown_seconds=)
 
 # get pool stats
 stats = driver_pool.get_pool_stats()
