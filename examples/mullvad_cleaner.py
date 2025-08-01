@@ -13,6 +13,7 @@ from xauto.utils.setup import get_options
 from xauto.utils.page_loading import wait_for_page_load
 from xauto.utils.validation import is_bot_page
 from xauto.internal.geckodriver.driver import get_driver_pool
+from xauto.utils.browser_utils import send_key
 
 from selenium.webdriver.common.by import By
 from time import sleep
@@ -22,7 +23,8 @@ if not TOKEN:
     raise RuntimeError("Missing MULLVAD_ACCOUNT environment variable")
 
 KEEP_NAMES = {
-    "list of names to not revoke",
+    # must be lowercase  
+    "neat coral",
 }
 
 def login_to_mullvad(driver):
@@ -38,7 +40,7 @@ def login_to_mullvad(driver):
     
     try:
         input = driver.find_element(By.NAME, "account_number")
-        input.send_keys(TOKEN)
+        send_key(driver, input, TOKEN)
         sleep(0.3)
 
         btn = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
