@@ -1,8 +1,10 @@
 from xauto.utils.setup import get_random_user_agent
 from xauto.utils.config import Config
-from xauto.internal.thread_safe import AtomicCounter
 from xauto.utils.logging import monitor_details
+from xauto.utils.injection import wrap_driver_with_injection
 from xauto.internal.memory import DriverSpawnBudget
+from xauto.internal.thread_safe import AtomicCounter
+from xauto.internal.dataclasses import DriverInfo
 
 import os
 import time
@@ -29,23 +31,14 @@ def get_driver_pool(max_size, firefox_options, force_reset=False):
             _driver_pool = DriverPool(max_size, firefox_options)
     return _driver_pool
 
-class _DriverInfo:
-    __slots__ = ('pids', 'last_access', 'heap_timestamp', 'failure_count')
-    
-    def __init__(self, pids):
-        self.pids = pids
-        self.last_access = time.monotonic()
-        self.heap_timestamp = self.last_access
-        self.failure_count = 0
-
 class DriverPool:
     __slots__ = (
-        '_lock', '_auto_mode', '_max_size', '_pool', '_drv_path', '_service', '_base_opts', '_in_use', 
-        '_created', '_errors', '_info', '_driver_objects', '_termination_failures', '_logger', '_shutdown',
-        'proxy_enabled', 'proxies', '_proxy_index', 'no_ssl_verify', 'use_auth', 
-        'username', 'password', 'socks5', 'dns_resolver', '_idle_heap',
-        '_seleniumwire_webdriver', '_base_opts_copy', '_pressure_lock',
-        '_last_scale_down_time', '_consecutive_high_load_count', '_spawn_blocked', '_spawn_budget'
+        '_lock', '_auto_mode', '_max_size', '_pool', '_drv_path', '_service', '_options', 
+        '_created', '_errors', '_info', '_driver_objects', '_termination_failures', 
+        'proxy_enabled', 'proxies', '_proxy_index', 'no_ssl_verify', 'use_auth', '_in_use', 
+        'username', 'password', 'socks5', 'dns_resolver', '_logger', '_shutdown',
+        '_seleniumwire_webdriver', '_pressure_lock', '_spawn_blocked', '_spawn_budget',
+        '_last_scale_down_time', '_consecutive_high_load_count', 
     )
     
     def __init__(self, max_size, firefox_options):
@@ -64,10 +57,7 @@ class DriverPool:
         self._pool = queue.Queue(maxsize=queue_maxsize)
         self._drv_path = os.path.join(os.path.dirname(__file__), 'geckodriver')
         
-        self._service = Service(self._drv_path)
-        self._base_opts = firefox_options
-        self._base_opts_copy = firefox_options.copy() if hasattr(firefox_options, 'copy') else firefox_options
-        self._idle_heap = []
+        self._options = firefox_options
         self._info = {}
         self._driver_objects = {}
         self._in_use = AtomicCounter()
@@ -152,7 +142,7 @@ class DriverPool:
         return f"{scheme}://{creds}{host}:{port}"
 
     def _create_driver(self):
-        driver_opts = self._base_opts_copy.copy() if hasattr(self._base_opts_copy, 'copy') else self._base_opts_copy
+        driver_opts = self._options
         driver_opts.set_preference("general.useragent.override", get_random_user_agent())
 
         service = Service(self._drv_path, port=0)
@@ -210,7 +200,7 @@ class DriverPool:
             pass
 
         with self._lock:
-            self._info[id(drv)] = _DriverInfo(pids)
+            self._info[id(drv)] = DriverInfo(pids)
             self._driver_objects[id(drv)] = drv
             self._created += 1
 
@@ -218,7 +208,6 @@ class DriverPool:
             info = self._info.get(id(drv))
             if info:
                 info.last_access = time.monotonic()
-            self._in_use += 1
         
         setattr(drv, '_driver_pool', self)
         pool_stats = self.get_pool_stats()
@@ -252,6 +241,14 @@ class DriverPool:
             else:
                 # debug_logger.info("Driver spawn unblocked")
                 self._lock.notify_all()
+
+    def get_driver_with_injection(self, timeout=None):
+        drv = self.get_driver(timeout=timeout)
+        if drv is None:
+            return None
+        
+        w = wrap_driver_with_injection(drv)
+        return w
 
     def get_driver(self, timeout=None):
         if self._shutdown:

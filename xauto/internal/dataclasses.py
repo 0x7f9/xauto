@@ -1,3 +1,5 @@
+import time
+
 class ResourceStats:
     __slots__ = ('memory', 'cpu')
 
@@ -13,4 +15,14 @@ class TaskWrapper:
         self.task = task
         self.retry_count = 0
 
+
+class DriverInfo:
+    __slots__ = ('pids', 'last_access', 'heap_timestamp', 'failure_count')
+    
+    def __init__(self, pids: list[int]):
+        self.pids = pids
+        self.last_access = time.monotonic()
+        self.heap_timestamp = self.last_access
+        self.failure_count = 0
+        
         

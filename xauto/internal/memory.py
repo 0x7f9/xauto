@@ -563,7 +563,8 @@ def acquire_driver_with_pressure_check(driver_pool, context="unknown"):
             driver_pool._lock.wait()
     
     try:
-        driver = driver_pool.get_driver()
+        # driver = driver_pool.get_driver()
+        driver = driver_pool.get_driver_with_injection()
         # debug_logger.debug(f"CHECKPOINT: driver acquired in {context} (id={id(driver)})")
         return driver
     except Exception as e:

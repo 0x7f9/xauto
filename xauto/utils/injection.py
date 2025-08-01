@@ -55,3 +55,14 @@ def _inject_api(driver) -> bool:
         driver._is_injected = False
         return False
 
+def wrap_driver_with_injection(driver):
+    _orig_get = driver.get
+
+    def stealthy_get(url, *args, **kwargs):
+        result = _orig_get(url, *args, **kwargs)
+        ensure_injected(driver)
+        return result
+
+    driver.get = stealthy_get
+    return driver
+
