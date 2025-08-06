@@ -205,38 +205,33 @@ def bootstrap_venv():
 
 
 def cleanup_bootstrap():
-    logger = setup_bootstrap_logger()
-    logger.info("Cleaning up bootstrap state")
+    print("Cleaning up bootstrap state")
     
     try:
         if os.path.exists(BOOTSTRAP_DONE_MARKER):
             os.remove(BOOTSTRAP_DONE_MARKER)
-            logger.info("Removed bootstrap marker")
-    except OSError as e:
-        logger.error(f"Failed to remove bootstrap marker: {e}")
-    
-    try:
+            print("Removed bootstrap marker")
+
         if os.path.exists(VENV_DIR):
             import shutil
             shutil.rmtree(VENV_DIR)
-            logger.info("Removed virtual environment")
+            print("Removed virtual environment")
+
+        if os.path.exists(BOOTSTRAP_LOG):
+            os.remove(BOOTSTRAP_LOG)
+            print("Removed bootstrap log")
+
+        # if os.path.exists(GET_PIP_PATH):
+        #     os.remove(GET_PIP_PATH)
+        #     print("Removed get-pip.py")
+
     except OSError as e:
-        logger.error(f"Failed to remove virtual environment: {e}")
+        print(f"Failed to cleanup environment: {e}")
 
 
 def bootstrap():
     if is_in_venv() and is_venv_functional():
         return True
-    
-    from xauto.utils.config import Config
-    from xauto.utils.setup import check_python_version, download_geckodriver
-    check_python_version(Config.get("misc.python_version", "3.10"))
-    download_geckodriver(Config.get("misc.geckodriver_version", "0.35.0"))
-    
-    if not is_in_venv():
-        # print(f"Not in virtual environment, switching to it...")
-        bootstrap_venv()
-        return False
     
     if is_in_venv() and not is_venv_functional():
         print("In virtual environment but not functional, rebuilding...")
@@ -244,5 +239,12 @@ def bootstrap():
         bootstrap_venv()
         # should never be reached
         return False
+
+    if not is_in_venv():
+        # print(f"Not in virtual environment, switching to it...")
+        bootstrap_venv()
+        # should never be reached
+        return False
     
-    return True
+    return False
+
