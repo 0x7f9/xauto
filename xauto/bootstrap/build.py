@@ -36,7 +36,7 @@ def setup_bootstrap_logger():
     return logger
 
 
-def ensure_get_pip():
+def get_pip():
     logger = setup_bootstrap_logger()
     
     if os.path.exists(GET_PIP_PATH):
@@ -117,13 +117,13 @@ def create_venv():
 def install_pip():
     logger = setup_bootstrap_logger()
     
-    if not ensure_get_pip():
-        logger.error(f"get-pip.py not found at {GET_PIP_PATH} and could not download it")
-        return False
-    
     if os.path.exists(PIP_EXE):
         logger.info("pip already installed in virtual environment")
         return True
+        
+    if not get_pip():
+        logger.error(f"get-pip.py not found at {GET_PIP_PATH} and could not download it")
+        return False
     
     logger.info("Installing pip using bundled get-pip.py")
     try:
