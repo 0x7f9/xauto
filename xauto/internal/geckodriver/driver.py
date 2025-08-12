@@ -36,7 +36,7 @@ class DriverPool:
         '_lock', '_auto_mode', '_max_size', '_pool', '_drv_path', '_service', '_options', 
         '_created', '_errors', '_info', '_driver_objects', '_termination_failures', 
         'proxy_enabled', 'proxies', '_proxy_index', 'no_ssl_verify', 'use_auth', '_in_use', 
-        'username', 'password', 'socks5', 'dns_resolver', '_logger', '_shutdown',
+        'username', 'password', 'socks5', 'dns_resolver', '_logger', '_',
         '_seleniumwire_webdriver', '_pressure_lock', '_spawn_blocked', '_spawn_budget',
         '_last_scale_down_time', '_consecutive_high_load_count', 
     )
@@ -606,10 +606,16 @@ class DriverPool:
             return id(driver) in self._info and self._info[id(driver)].last_access > 0
 
     def shutdown(self, wait=True, timeout=None):
+        global _driver_pool
+
         if wait:
             self.close_all()
         else:
             self._shutdown = True
+
+        with _driver_pool_lock:
+            _driver_pool = None
+
         return True
 
     def get_total_created_count(self):
