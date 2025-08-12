@@ -18,7 +18,7 @@ import lxml.html
 
 config = Config()
 config.set("proxy.enabled", False)
-config.set("driver.headless", True)
+config.set("system.headless", True)
 config.freeze()
 
 BASE_URL = "https://www.cvedetails.com/cve/"
