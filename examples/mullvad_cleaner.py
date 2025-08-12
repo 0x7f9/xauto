@@ -27,6 +27,11 @@ KEEP_NAMES = {
     "neat coral",
 }
 
+from xauto.utils.config import Config
+config = Config()
+config.set("proxy.enabled", False)
+config.freeze()
+
 def login_to_mullvad(driver):
     driver.get("https://mullvad.net/en/account/login")
 
