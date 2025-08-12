@@ -231,13 +231,12 @@ def cleanup_bootstrap():
 
 def bootstrap():
     if is_in_venv() and is_venv_functional():
+        from xauto.utils.config import Config
+        from xauto.utils.setup import check_python_version, download_geckodriver
+        check_python_version(Config.get("misc.python_version", "3.10"))
+        download_geckodriver(Config.get("misc.geckodriver_version", "0.35.0"))
         return True
 
-    from xauto.utils.config import Config
-    from xauto.utils.setup import check_python_version, download_geckodriver
-    check_python_version(Config.get("misc.python_version", "3.10"))
-    download_geckodriver(Config.get("misc.geckodriver_version", "0.35.0"))
-    
     if is_in_venv() and not is_venv_functional():
         print("In virtual environment but not functional, rebuilding...")
         cleanup_bootstrap()
@@ -250,6 +249,6 @@ def bootstrap():
         bootstrap_venv()
         # should never be reached
         return False
-    
+        
     return False
 
