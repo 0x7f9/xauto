@@ -7,6 +7,10 @@ xauto/bootstrap/get-pip.py
 
 xauto/debug_logs/
 xauto/internal/geckodriver/geckodriver
+xauto/internal/cache_manager
 
-main.py
-testing.py
+xauto/website_login_module
+old_code/
+creds/
+
+run.py
