@@ -89,6 +89,7 @@ warning_colour = text_colors["warning_colour"]
 light_grey_text_colour = text_colors["light_grey_text_colour"]
 
 debug = Config.get("misc.debug_mode", True)
+bold_text = Config.get("ui.bold_output", True)
 
 def _create_ephemeral_profile():
     try:
@@ -116,7 +117,7 @@ def get_options():
     # options.add_argument("--no-sandbox")
     # options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-extensions")
-    options.add_argument("--window-size=1920,1080")
+    # options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.set_preference("browser.cache.disk.enable", False)
     options.set_preference("browser.cache.memory.enable", False)
@@ -176,5 +177,6 @@ def get_options():
     options.set_preference("devtools.jsonview.enabled", False)
     return options
 
-def get_random_user_agent():
+def get_random_user_agent() -> str:
     return random.choice(list(USER_AGENTS.values()))
+

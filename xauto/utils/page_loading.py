@@ -2,19 +2,20 @@ from xauto.utils.config import Config
 from xauto.utils.injection import ensure_injected
 from xauto.utils.logging import debug_logger
 from xauto.utils.utility import require_connected
-from xauto.utils.browser_utils import close_popups
 
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.common.by import By
+from typing import Optional
 import time
 
 _LOAD_TIME = "return window.performance.timing.loadEventEnd - window.performance.timing.navigationStart"
 
 @require_connected(False)
-def explicit_page_load(driver, wait_for=None) -> bool:
+def explicit_page_load(driver: WebDriver, wait_for: Optional[float] = None) -> bool:
+    from xauto.utils.browser_utils import close_popups
     close_popups(driver)
 
-    # driver is needed for require_connected check
     timeout = wait_for or Config.get("misc.timeouts.body_load")
     end_time = time.time() + timeout
 
@@ -24,11 +25,12 @@ def explicit_page_load(driver, wait_for=None) -> bool:
     return True
 
 @require_connected(False)
-def wait_for_page_load(driver, timeout=None) -> bool:
+def wait_for_page_load(driver: WebDriver, timeout: Optional[float] = None) -> bool:
+    from xauto.utils.browser_utils import close_popups
     close_popups(driver)
     
     timeout = timeout or Config.get("misc.timeouts.body_load")
-
+    
     if not ensure_body_loaded(driver, timeout=timeout):
         return False
 
@@ -37,7 +39,7 @@ def wait_for_page_load(driver, timeout=None) -> bool:
         return False
 
     try:
-        timeout = int(timeout * 1000)
+        timeout = int(timeout * 1000) # type: ignore
         driver.execute_script(f"return window._xautoAPI.waitForReady({timeout})")
         load_time = driver.execute_script(_LOAD_TIME) / 1000.0
         debug_logger.debug(f"[PAGE_LOAD] Load time: {load_time:.2f}s")
@@ -48,17 +50,21 @@ def wait_for_page_load(driver, timeout=None) -> bool:
     return False
 
 @require_connected(False)
-def ensure_body_loaded(driver, timeout=None) -> bool:
+def ensure_body_loaded(driver: WebDriver, timeout: Optional[float] = None) -> bool:
     timeout = timeout or Config.get("misc.timeouts.body_load")
     try:
-        WebDriverWait(driver, timeout).until(lambda d: d.find_element(By.CSS_SELECTOR, "body"))
+        WebDriverWait(driver, timeout).until(lambda d: d.find_element(By.CSS_SELECTOR, "body"))  # type: ignore
         return True
     except Exception:
         debug_logger.debug("[BODY_CHECK] Body element not found within timeout")
         return False
 
 @require_connected(False)
-def wait_for_url_change(driver, old_url, wait_for=None) -> bool:
+def wait_for_url_change(
+    driver: WebDriver, 
+    old_url: str, 
+    wait_for: Optional[float] = None
+) -> bool:
     timeout = wait_for or Config.get("misc.timeouts.url_loading")
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -70,3 +76,4 @@ def wait_for_url_change(driver, old_url, wait_for=None) -> bool:
         time.sleep(0.1)
     
     return False
+

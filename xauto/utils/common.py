@@ -14,8 +14,6 @@ DEBUG_LOGS_DIR = "xauto/debug_logs"
 
 def clear_debug_files():
     try:
-        from xauto.utils.logging import monitor_details
-        
         debug_files = [
             os.path.join(DEBUG_LOGS_DIR, "monitor_details.log"),
             os.path.join(DEBUG_LOGS_DIR, "debug.log"),

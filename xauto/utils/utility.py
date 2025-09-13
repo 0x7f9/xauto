@@ -3,14 +3,18 @@
 from xauto.utils.logging import debug_logger
 
 from selenium.common.exceptions import WebDriverException
-from typing import Any, Optional
+from selenium.webdriver.remote.webdriver import WebDriver
+from typing import Any, Generator, Optional, Set
 from contextlib import contextmanager
 import functools
 import os
 import mmap
 
 @contextmanager
-def iframe_context(driver, iframe):
+def iframe_context(
+    driver: WebDriver, 
+    iframe: Optional[Any] = None
+) -> Generator[None, None, None]:
     if iframe:
         driver.switch_to.frame(iframe)
     try:
@@ -19,7 +23,7 @@ def iframe_context(driver, iframe):
         if iframe:
             driver.switch_to.default_content()
 
-def check_driver_liveness(driver) -> bool:
+def check_driver_liveness(driver: WebDriver) -> bool:
     try:
         driver.execute_script("return 1")
         return True
@@ -27,14 +31,14 @@ def check_driver_liveness(driver) -> bool:
         debug_logger.debug(f"Driver liveness check failed – session dead: {e}")
         return False
 
-def require_connected(default: bool):
+def require_connected(default: Any) -> Any:
     def decorator(fn):
         @functools.wraps(fn)
         def wrapper(driver, *args, **kwargs) -> bool:
             if not check_driver_liveness(driver):
                 debug_logger.debug(f"{fn.__name__}: driver not connected or dead, skipping")
                 return default
-            return bool(fn(driver, *args, **kwargs))
+            return fn(driver, *args, **kwargs)
         return wrapper
     return decorator
 
@@ -76,7 +80,7 @@ def truncate_file(fd: int, size: int) -> bool:
     except OSError:
         return False
 
-def read_wordlist(filepath):
+def read_wordlist(filepath: str) -> Set[str]:
     wordlist = set()
     fd = open_file_ro(filepath)
     if fd is None:
@@ -91,6 +95,6 @@ def read_wordlist(filepath):
                     continue
                 wordlist.add(line)
     except OSError:
-        pass 
+        pass
     return wordlist
 

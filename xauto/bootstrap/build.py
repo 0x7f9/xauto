@@ -169,7 +169,7 @@ def bootstrap_venv():
             return True
         else:
             print("ERROR: Currently in virtual environment but it's not functional.")
-            print("Run `python lib/bootstrap/cleanup_bootstrap.py` to rebuild the venv.")
+            print("Run `python xauto/bootstrap/cleanup_bootstrap.py` to rebuild the venv.")
             sys.exit(1)
     
     if os.path.exists(BOOTSTRAP_DONE_MARKER) and is_venv_functional():

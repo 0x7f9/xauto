@@ -12,7 +12,12 @@ def shutdown_component(name: str, close_fn: Callable) -> None:
     except Exception as e:
         debug_logger.error(f"{name}: error during shutdown: {e}", exc_info=debug)
 
-def shutdown_component_with_timeout(component: Any, name: str, timeout: float, shutdown_method: str = "shutdown") -> None:
+def shutdown_component_with_timeout(
+    component: Any, 
+    name: str, 
+    timeout: float, 
+    shutdown_method: str = "shutdown"
+) -> None:
     if component is None:
         debug_logger.warning(f"No {name} to close")
         return

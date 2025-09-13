@@ -64,6 +64,7 @@ colors:
 
 ui:
   verbose_output: false
+  bold_output: true
 
 misc:
   debug_mode: false
@@ -79,7 +80,7 @@ misc:
   
   # default timeouts
   timeouts:
-    body_load: 10
+    body_load: 5
     url_loading: 5
     max_task_retries: 2
     shutdown: 10

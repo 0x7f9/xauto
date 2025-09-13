@@ -36,6 +36,17 @@
 
   function setupUtils() {
     const API = {};
+
+    API.enableDebug = () => {
+      window._xautoDebug = true;
+      console.log('[XAUTO_DEBUG] Debug mode enabled');
+    };
+
+    API.disableDebug = () => {
+      window._xautoDebug = false;
+      console.log('[XAUTO_DEBUG] Debug mode disabled');
+    };
+
     let totalRequests = 0;
     let completedRequests = 0;
 
@@ -70,7 +81,7 @@
       return origSend.apply(this, arguments);
     };
 
-    API.waitForReady = (maxWait = 10000, idleWindow = 200, threshold = 0.7) => {
+    API.waitForReady = (maxWait = 10000, idleWindow = 200, threshold = 0.9) => {
       return new Promise(resolve => {
         const start = Date.now();
 
@@ -81,16 +92,22 @@
           if (ready && percentDone >= threshold) {
             const idleStart = Date.now();
 
-            (function idleCheck() {
-              const idleTime = Date.now() - idleStart;
+            function confirmIdle() {
               const percent = totalRequests === 0 ? 1 : completedRequests / totalRequests;
+              const idleTime = Date.now() - idleStart;
 
-              if (percent >= threshold && idleTime >= idleWindow) return resolve(true);
-              if (Date.now() - start < maxWait) return setTimeout(idleCheck, 50);
-              return resolve(false);
-            })();
+              if (percent >= threshold && idleTime >= idleWindow) {
+                return resolve(true);
+              }
 
-            return;
+              if (Date.now() - start < maxWait) {
+                requestIdleCallback(confirmIdle, { timeout: 100 });
+              } else {
+                resolve(false);
+              }
+            }
+
+            return requestIdleCallback(confirmIdle, { timeout: idleWindow });
           }
 
           if (Date.now() - start < maxWait) return setTimeout(checkReady, 100);

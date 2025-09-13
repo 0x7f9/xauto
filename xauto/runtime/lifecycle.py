@@ -10,7 +10,7 @@ from xauto.internal.geckodriver.driver import get_driver_pool
 from xauto.internal.memory import resource_pressure_monitor, cleanup_memory_monitor, check_consistency_patterns
 from xauto.internal.thread_safe import ThreadSafeDict
 
-from typing import Callable, Optional, Any, Tuple
+from typing import Callable, Optional, Any, Tuple, Union
 import threading
 
 _thread_state = ThreadSafeDict()
@@ -48,7 +48,7 @@ def force_kill_thread(thread_key: str) -> None:
         finally:
             _thread_state[thread_key] = None
 
-def get_worker_limits():
+def get_worker_limits() -> Tuple[Union[int, float], int]:
     driver_limit = Config.get("system.driver_limit")
 
     if str(driver_limit).lower() == "auto":

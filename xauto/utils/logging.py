@@ -11,7 +11,7 @@ DEBUG_LOG_FILE = "xauto/debug_logs/debug.log"
 _logger_lock = threading.Lock()
 _loggers_initialized = False
 
-def _start_loggers():
+def _start_loggers() -> None:
     global _loggers_initialized
     if not _loggers_initialized:
         with _logger_lock:
@@ -19,7 +19,7 @@ def _start_loggers():
                 _initialize_loggers()
                 _loggers_initialized = True
 
-def _initialize_loggers():
+def _initialize_loggers() -> None:
     os.makedirs(os.path.dirname(MAIN_LOG_FILE), exist_ok=True)
     
     monitor_details = logging.getLogger("monitor_details")

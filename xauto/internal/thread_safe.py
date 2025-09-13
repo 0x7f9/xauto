@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 from xauto.utils.logging import debug_logger
-from xauto.utils.setup import debug
 
 from typing import Any, List, Optional, Iterator
 from collections import deque
@@ -19,6 +18,7 @@ class SafeThread(threading.Thread):
             if self._fn:
                 self._fn(**self._kwargs)
         except Exception as e:
+            from xauto.utils.setup import debug
             fn_name = getattr(self._fn, '__name__', 'unknown_function') if self._fn else 'unknown_function'
             debug_logger.error(f"Thread error in {fn_name}: {e}", exc_info=debug)
 

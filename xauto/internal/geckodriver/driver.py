@@ -1,6 +1,6 @@
 from xauto.utils.setup import get_random_user_agent
 from xauto.utils.config import Config
-from xauto.utils.logging import monitor_details
+from xauto.utils.logging import monitor_details, debug_logger
 from xauto.utils.injection import wrap_driver_with_injection
 from xauto.internal.memory import DriverSpawnBudget
 from xauto.internal.thread_safe import AtomicCounter
@@ -365,7 +365,6 @@ class DriverPool:
                     pids = []
                 self._info.pop(id(drv), None)
                 self._driver_objects.pop(id(drv), None)
-                # Decrement the in_use counter when destroying a driver
                 self._in_use -= 1
 
             try:
@@ -374,7 +373,6 @@ class DriverPool:
             except Exception as e:
                 # debug_logger.warning(f"Error quitting driver: {e}")
                 monitor_details.debug(f"[DRIVER_DESTROY] quit_failed: driver_id={driver_id}, error={e}")
-                pass
 
             for pid in pids:
                 try:
@@ -425,40 +423,11 @@ class DriverPool:
             try:
                 self._destroy(driver)
             except Exception as e:
-                # debug_logger.warning(f"Error destroying driver {drv_id}: {e}", exc_info=debug)
-                pass
-        
-        try:
-            self._cleanup_remaining_processes()
-        except Exception as e:
-            # debug_logger.warning(f"Error in final process cleanup: {e}", exc_info=debug)
-            pass
+                from xauto.utils.setup import debug
+                debug_logger.warning(f"Error destroying driver {drv_id}: {e}", exc_info=debug)
         
         # created_count = int(self._created)
         # debug_logger.info(f"Closed {created_count} drivers")
-
-    def _cleanup_remaining_processes(self):
-        try:
-            current_user = os.getenv('USER', '')
-            if not current_user:
-                return
-                
-            for proc in psutil.process_iter(['pid', 'name', 'username']):
-                try:
-                    if (proc.info['username'] == current_user and 
-                        proc.info['name'] and 
-                        ('firefox' in proc.info['name'].lower() or 
-                         'geckodriver' in proc.info['name'].lower())):
-                        # debug_logger.debug(f"Killing remaining process: {proc.info['name']} (PID: {proc.info['pid']})")
-                        proc.kill()
-                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                    pass
-                except Exception as e:
-                    # debug_logger.debug(f"Error checking process {proc.info.get('pid', 'unknown')}: {e}")
-                    pass
-        except Exception as e:
-            # debug_logger.debug(f"Error in remaining process cleanup: {e}")
-            pass
 
     def cleanup_idle_drivers(self, max_idle_time=30):
         if self._shutdown:

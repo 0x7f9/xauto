@@ -27,6 +27,7 @@ class Worker(threading.Thread):
         except Exception as e:
             debug_logger.error(f"Worker constructor error: {e}. args={args}, kwargs={kwargs}", exc_info=True)
             raise
+        
         self.task_queue = task_queue
         self.driver_pool = driver_pool
         self.per_task_fn = per_task_fn
@@ -102,19 +103,12 @@ class Worker(threading.Thread):
         debug_logger.info(f"{self.name}: exiting after {runtime:.1f}s, {self.task_count} tasks "
                         f"({self.successful_tasks} OK, {self.failed_tasks} FAIL)")
 
-    def _handle_driver_failure(self, error):
+    def _handle_driver_failure(self, error: Exception) -> None:
         current_time = time.monotonic()
         debug_mode = debug
-        error = str(error).lower()
+        error_str = str(error).lower()
 
-        # if debug_mode:
-        #     if is_connection_error(error):
-        #         debug_logger.warning(f"{self.name}: Driver connection error on task #{self.task_count}: {error}")
-        #     else:
-        #         debug_logger.error(f"{self.name}: Driver error on task #{self.task_count}: {error}, replacing driver")
-        #     debug_logger.debug(f"{self.name}: Exception traceback: {traceback.format_exc()}")
-
-        if is_connection_error(error):
+        if is_connection_error(error_str):
             debug_logger.warning(f"{self.name}: Driver connection error on task #{self.task_count}: {error}")
         else:
             debug_logger.error(f"{self.name}: Driver error on task #{self.task_count}: {error}, replacing driver")
@@ -139,7 +133,7 @@ class Worker(threading.Thread):
                 debug_logger.warning(f"{self.name}: Circuit breaker open, waiting {delay}s before retry")
             time.sleep(delay)
 
-    def acquire_driver(self):
+    def acquire_driver(self) -> bool:
         debug_mode = debug
         if debug_mode:
             debug_logger.debug(f"{self.name}: Acquiring driver with blocking semantics")
@@ -158,7 +152,7 @@ class Worker(threading.Thread):
                 debug_logger.error(f"{self.name}: Exception during driver acquisition: {e}", exc_info=True)
             return False
 
-    def cleanup_driver(self):
+    def cleanup_driver(self) -> None:
         if self.driver:
             try:
                 self.driver_pool.return_driver(self.driver)
@@ -166,7 +160,7 @@ class Worker(threading.Thread):
                 debug_logger.error(f"{self.name}: Error returning driver: {e}")
             self.driver = None
 
-    def stop(self):
+    def stop(self) -> None:
         self.task_queue.put(None)
 
     def get_stats(self) -> dict:

@@ -3,6 +3,7 @@ from xauto.utils.logging import debug_bot_detection
 import re
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import StaleElementReferenceException
+from selenium.webdriver.remote.webdriver import WebDriver
 
 def get_regex(pattern, flags=0):
     return re.compile(pattern, flags)
@@ -56,21 +57,21 @@ BOT_WORDS = {
 }
 bot_patterns = [(kw, get_regex(rf"{re.escape(kw.lower()).replace(' ', '.*?')}", re.I)) for kw in BOT_WORDS]
 
-def is_browser_error_page(driver):
+def is_browser_error_page(driver: WebDriver) -> bool:
     try:
         title = driver.title.lower()
-        return any(err.lower() in title for err in BROWSER_ERROR_TITLES)
+        return any(title == err for err in BROWSER_ERROR_TITLES)
     except Exception:
         return False
 
-def is_connection_error(error):
+def is_connection_error(error: str) -> bool:
     try:
         err_str = str(error).lower()
         return any(keyword in err_str for keyword in CONNECTION_ERROR_KEYWORDS)
     except Exception:
         return False
 
-def _is_cloudflare_challenge(driver):
+def _is_cloudflare_challenge(driver: WebDriver) -> bool:
     try:
         title = (driver.title or "").lower()
         page = (driver.page_source or "").lower()
@@ -87,7 +88,7 @@ def _is_cloudflare_challenge(driver):
         debug_bot_detection.debug(f"[BOT DETECTION] Cloudflare check error: {e}")
         return False
 
-def is_bot_page(driver, url):
+def is_bot_page(driver: WebDriver, url: str) -> bool:
     if _is_cloudflare_challenge(driver):
         debug_bot_detection.debug(f"[BOT DETECTION] Cloudflare on {url}")
         return True
@@ -110,4 +111,5 @@ def is_bot_page(driver, url):
         except StaleElementReferenceException:
             continue
 
-    return False 
+    return False
+
