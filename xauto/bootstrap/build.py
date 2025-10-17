@@ -103,8 +103,11 @@ def create_venv():
     
     logger.info(f"Creating virtual environment at {VENV_DIR}")
     try:
-        subprocess.run([sys.executable, "-m", "venv", VENV_DIR], 
-                      check=True, capture_output=True, text=True)
+        subprocess.run(["python3", "-m", "venv", VENV_DIR], 
+                       check=True, capture_output=True, text=True)
+
+        # subprocess.run([sys.executable, "-m", "venv", VENV_DIR], 
+        #               check=True, capture_output=True, text=True)
         logger.info("Virtual environment created successfully")
         return True
     except subprocess.CalledProcessError as e:
