@@ -39,11 +39,27 @@ def wait_for_page_load(driver: WebDriver, timeout: Optional[float] = None) -> bo
         return False
 
     try:
-        timeout = int(timeout * 1000) # type: ignore
-        driver.execute_script(f"return window._xautoAPI.waitForReady({timeout})")
-        load_time = driver.execute_script(_LOAD_TIME) / 1000.0
-        debug_logger.debug(f"[PAGE_LOAD] Load time: {load_time:.2f}s")
-        return True
+        driver.set_script_timeout(int(timeout + 2))  # type: ignore
+
+        s = """
+            var cb = arguments[arguments.length - 1];
+            if (window._xautoAPI && typeof window._xautoAPI.waitForReady === 'function') {
+                window._xautoAPI
+                    .waitForReady(arguments[0])
+                    .then(cb)
+                    .catch(() => cb(false));
+            } else {
+                cb(false);
+            }
+        """
+
+        ready = driver.execute_async_script(s, int(timeout * 1000))  # type: ignore
+
+        if ready:
+            load_time = driver.execute_script(_LOAD_TIME) / 1000.0
+            debug_logger.debug(f"[PAGE_LOAD] Load time: {load_time:.2f}s")
+            return True
+
     except Exception as e:
         debug_logger.debug(f"[PAGE_LOAD] Promise wait failed: {e}")
 
