@@ -29,7 +29,10 @@ from xauto.internal.geckodriver.driver import get_driver_pool
 # create driver pool
 driver_pool = get_driver_pool(max_size=10, firefox_options=options)
 
-# helpful methods
+# will call get_driver_with_injection() internally
+acquire_driver_with_pressure_check(driver_pool, "Worker-name")
+
+# helpful methods of driver_pool
 driver_pool.get_driver(timeout=)  
 driver_pool.get_driver_with_injection(timeout=)
 driver_pool.return_driver(driver)          
@@ -104,8 +107,14 @@ send_key(driver, field, "password1", check_url=True, iframe=iframe_element)
 
 ### Browser Page Loading
 ```python
+from xauto.utils.page_loading import load_page_with_high_load_check
+# wait_for_page_load and wait_high_load are called inside
+if not load_page_with_high_load_check(driver, url, timeout=):
+    print("Page failed to load")
+    return
+
 from xauto.utils.page_loading import wait_for_page_load
-# ensure_body_loaded is called inside of wait_for_page_load
+# ensure_body_loaded is called inside
 if not wait_for_page_load(driver, wait_for=):
     print("Page failed to load")
     # handle page loading error here
