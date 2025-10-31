@@ -1,6 +1,7 @@
+from xauto.internal.geckodriver.driver import get_driver_pool
 from xauto.utils.config import Config
 from xauto.utils.injection import ensure_injected
-from xauto.utils.logging import debug_logger
+from xauto.utils.logging import debug_logger, monitor_details as md
 from xauto.utils.utility import require_connected
 
 from selenium.webdriver.support.ui import WebDriverWait
@@ -10,6 +11,28 @@ from typing import Optional
 import time
 
 _LOAD_TIME = "return window.performance.timing.loadEventEnd - window.performance.timing.navigationStart"
+
+def load_page_with_high_load_check(driver, url, timeout=8):
+    from xauto.utils.browser_utils import close_popups
+    close_popups(driver)
+    
+    driver_pool = get_driver_pool()
+    if driver_pool:
+        from xauto.internal.memory import wait_high_load
+        forced = wait_high_load(driver_pool, context="validation.navigate", url=url)
+        driver._forced_navigation = forced
+    
+    try:
+        driver.get(url)
+    except Exception as e:
+        md.info(f"[DEBUG] {url} marked invalid: driver.get() failed: {e}")
+        return False
+    
+    if not wait_for_page_load(driver, timeout=timeout):
+        md.info(f"[DEBUG] {url} marked invalid: wait_for_page_load() timeout")
+        return False
+    
+    return True
 
 @require_connected(False)
 def explicit_page_load(driver: WebDriver, wait_for: Optional[float] = None) -> bool:
@@ -29,8 +52,9 @@ def wait_for_page_load(driver: WebDriver, timeout: Optional[float] = None) -> bo
     from xauto.utils.browser_utils import close_popups
     close_popups(driver)
     
-    timeout = timeout or Config.get("misc.timeouts.body_load")
-    
+    load_time = Config.get("misc.timeouts.body_load")
+    t = timeout or load_time
+
     if not ensure_body_loaded(driver, timeout=timeout):
         return False
 
@@ -39,21 +63,26 @@ def wait_for_page_load(driver: WebDriver, timeout: Optional[float] = None) -> bo
         return False
 
     try:
-        driver.set_script_timeout(int(timeout + 2))  # type: ignore
+        driver.set_script_timeout(int(t + 2))
 
         s = """
             var cb = arguments[arguments.length - 1];
-            if (window._xautoAPI && typeof window._xautoAPI.waitForReady === 'function') {
-                window._xautoAPI
-                    .waitForReady(arguments[0])
-                    .then(cb)
-                    .catch(() => cb(false));
-            } else {
+            var timeout = arguments[0] || 10000;
+
+            try {
+                if (window._xautoAPI && typeof window._xautoAPI.waitForReady === 'function') {
+                    window._xautoAPI.waitForReady(timeout)
+                        .then(result => cb(result))
+                        .catch(() => cb(false));
+                } else {
+                    cb(false);
+                }
+            } catch (e) {
                 cb(false);
             }
         """
 
-        ready = driver.execute_async_script(s, int(timeout * 1000))  # type: ignore
+        ready = driver.execute_async_script(s, int(t * 1000)) 
 
         if ready:
             load_time = driver.execute_script(_LOAD_TIME) / 1000.0

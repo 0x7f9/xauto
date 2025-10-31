@@ -50,9 +50,16 @@
     let totalRequests = 0;
     let completedRequests = 0;
 
-    function recordRequest(started) {
+    function recordRequest(started, url) {
+      try {
+        // if (pageInteractive) return;
+        
+        const sameOrigin = url && url.startsWith(location.origin);
+        if (!sameOrigin) return;
+
       if (started) totalRequests++;
       else completedRequests++;
+      } catch (_) {}
     }
 
     if (typeof window.fetch === 'function') {
@@ -81,15 +88,18 @@
       return origSend.apply(this, arguments);
     };
 
-    API.waitForReady = (maxWait = 10000, idleWindow = 200, threshold = 0.9) => {
+    API.waitForReady = (maxWait = 10000, idleWindow = 200, threshold = 0.7) => {
       return new Promise(resolve => {
         const start = Date.now();
 
         function checkReady() {
-          const ready = document.readyState === 'complete';
+          const readyState = document.readyState;
           const percentDone = totalRequests === 0 ? 1 : completedRequests / totalRequests;
 
-          if (ready && percentDone >= threshold) {
+          const domReady = readyState === 'interactive' || readyState === 'complete';
+          const netReady = percentDone >= threshold;
+
+          if (domReady && netReady) {
             const idleStart = Date.now();
 
             function confirmIdle() {
@@ -97,21 +107,26 @@
               const idleTime = Date.now() - idleStart;
 
               if (percent >= threshold && idleTime >= idleWindow) {
+                totalRequests = 0;
+                completedRequests = 0;
                 return resolve(true);
               }
 
               if (Date.now() - start < maxWait) {
-                requestIdleCallback(confirmIdle, { timeout: 100 });
+                (window.requestIdleCallback || window.requestAnimationFrame)(confirmIdle);
               } else {
                 resolve(false);
               }
             }
 
-            return requestIdleCallback(confirmIdle, { timeout: idleWindow });
+            return (window.requestIdleCallback || window.requestAnimationFrame)(confirmIdle);
           }
 
-          if (Date.now() - start < maxWait) return setTimeout(checkReady, 100);
+          if (Date.now() - start < maxWait) {
+            setTimeout(checkReady, 100);
+          } else {
           resolve(false);
+          }
         }
 
         checkReady();

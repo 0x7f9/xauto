@@ -3,7 +3,7 @@ system:
   headless: false
 
 proxy:
-  enabled: true
+  enabled: false
   no_ssl_verify: false
   socks5_mode: false
   resolve_dns_locally: false
@@ -11,7 +11,8 @@ proxy:
     enabled: false
     username: ""
     password: ""
-  list: []
+  list: 
+    # - 123.456.7.89:8080
 
 resources:
   driver_autoscaling:
@@ -23,13 +24,9 @@ resources:
   
   driver_spawning:
     # these settings will control the start up speed of the pool
-    # if you find you are having lag during the start up, then
-    # decrease the max spawns per window.
-    # try play round with it. 
+    # up max_spawns_per_window for a more aggressive start up
     spawn_window_sec: 10
-    # up this for a more aggressive start up
-    max_spawns_per_window: 12
-    rate_limited_spawn_delay: 5.0
+    max_spawns_per_window: 5
 
   memory_tuning:
     buffer:
@@ -44,9 +41,6 @@ resources:
       cpu_threshold: 80.0
       
     pressure_blocking:
-      # if pressure blocking is over this duration, force unblock
-      # prevent infinite blocking if website pages line up with load times.
-      max_block_duration: 30.0
       # during high load max time a driver will wait before going ahead with its work. 
       max_navigation_wait_time: 30.0
       # workers wait in N second chunks before checking again
@@ -73,7 +67,9 @@ misc:
 
   logging:
     interval: 10
-    status_console: false
+    # turn on/off [enter] status console
+    # status console is set up inside setup_runtime()
+    status_console: true
 
   thread_monitoring:
     interval_sec: 1
@@ -87,7 +83,12 @@ misc:
     join: 10
     worker: 5
     idle_cycle_check: 6
+    # max time a driver can sit in the queue
+    # drivers are only put back in the queue between
+    # tasks. should rarely ever trigger at 30 secs
     max_driver_idle_sec: 30
+    # how long to wait before trying to recreate a failed driver
+    recreate_max_delay: 5
+    # driver spawn timeouts
     spawn_wait_delay: 3
-    circuit_breaker_window: 30
-    circuit_breaker_max_delay: 60
+

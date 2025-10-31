@@ -98,3 +98,13 @@ def read_wordlist(filepath: str) -> Set[str]:
         pass
     return wordlist
 
+def counter(name):
+    from xauto.runtime.lifecycle import runtime_state
+    outcomes = runtime_state.get('outcomes')
+    if not outcomes:
+        return
+    counter = outcomes.get(name)
+    if counter:
+        counter += 1
+
+        

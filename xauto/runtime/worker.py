@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from xauto.utils.logging import debug_logger
+from xauto.utils.logging import debug_logger, monitor_details
 from xauto.utils.config import Config
 from xauto.utils.setup import debug
 from xauto.utils.validation import is_connection_error
@@ -9,6 +9,7 @@ from xauto.internal.memory import acquire_driver_with_pressure_check
 import time
 import threading
 import traceback
+import queue
 
 class Worker(threading.Thread):
     __slots__ = (
@@ -48,117 +49,70 @@ class Worker(threading.Thread):
         self._max_task_retries = Config.get("misc.timeouts.max_task_retries")
         self._start_time = time.monotonic()
         self.manager = manager
-        
+    
     def run(self):
-        get = self.task_queue.get
-        put = self.task_queue.put
-        done = self.task_queue.task_done
-        monotonic = time.monotonic
-        should_return = self._should_return_driver_for_pressure
-        acquire = self.acquire_driver
-        handle_fail = self._handle_driver_failure
-        task_fn = self.per_task_fn
-        cleanup = self.cleanup_driver
+        fn = self.per_task_fn
 
         while True:
-            task = get()
-            if task is None:
-                done()
-                break
-            
-            self.task_count += 1
-            start = monotonic()
             try:
-                if self.driver is None and not acquire():
-                    self._exit_reason = "driver_acquisition_failed"
-                    return
+                task = self.task_queue.get(timeout=0.5)
+            except queue.Empty:
+                time.sleep(1)
+                continue
+            
+            if task is None:
+                debug_logger.info(f"{self.name}: Exiting worker, got stop().")
+                self.task_queue.task_done()
+                self.return_driver()
+                break
 
-                actual = task.task
-                task_fn(actual, self.driver)
-                self.successful_tasks += 1
+            try:
+                if not self.driver:
+                    # worker will block inside here waiting for a driver if under high load
+                    self.driver = acquire_driver_with_pressure_check(self.driver_pool, context=self.name)
 
-                if should_return():
-                    if self.driver is not None:
-                        cleanup()
+                fn(task.task, self.driver)
+
+                self._should_destroy_driver_for_pressure()
+              
             except Exception as e:
-                self.failed_tasks += 1
-                handle_fail(e)
+                self._handle_driver_failure(e)
                 
                 task.retry_count += 1
                 if task.retry_count <= self._max_task_retries:
-                    put(task)
+                    self.task_queue.put(task)
             finally:
-                done()
-
-            duration = monotonic() - start
-            self._total_task_time += duration
-            if debug and self.task_count % 10 == 0 and monotonic() - self._last_log_time >= self.log_interval:
-                self._last_log_time = monotonic()
-                avg = self._total_task_time / self.task_count
-                success_rate = self.successful_tasks / max(1, self.task_count)
-                debug_logger.info(f"{self.name}: {self.task_count} tasks, avg {avg:.2f}s, success rate: {success_rate:.1%}")
-
-        cleanup()
-        runtime = monotonic() - self._start_time
-        debug_logger.info(f"{self.name}: exiting after {runtime:.1f}s, {self.task_count} tasks "
-                        f"({self.successful_tasks} OK, {self.failed_tasks} FAIL)")
+                self.task_queue.task_done()
 
     def _handle_driver_failure(self, error: Exception) -> None:
-        current_time = time.monotonic()
-        debug_mode = debug
         error_str = str(error).lower()
 
         if is_connection_error(error_str):
             debug_logger.warning(f"{self.name}: Driver connection error on task #{self.task_count}: {error}")
         else:
             debug_logger.error(f"{self.name}: Driver error on task #{self.task_count}: {error}, replacing driver")
-            debug_logger.debug(f"{self.name}: Exception traceback: {traceback.format_exc()}")
+            debug_logger.error(f"{self.name}: Traceback: {traceback.format_exc()}")
     
-        if current_time - self._circuit_breaker_last_failure < Config.get("misc.timeouts.circuit_breaker_window"):
-            self._circuit_breaker_failures += 1
-        else:
-            self._circuit_breaker_failures = 1
-        self._circuit_breaker_last_failure = current_time
-        
         if self.driver:
             try:
                 self.driver_pool._destroy(self.driver)
             except Exception as e:
-                debug_logger.error(f"{self.name}: Error destroying failed driver: {e}")
+                debug_logger.error(f"Destroying {self.name} failed: {e}")
             self.driver = None
         
-        if self._circuit_breaker_failures >= self._circuit_breaker_threshold:
-            delay = min(Config.get("misc.timeouts.circuit_breaker_max_delay"), 2 ** (self._circuit_breaker_failures - self._circuit_breaker_threshold))
-            if debug_mode:
-                debug_logger.warning(f"{self.name}: Circuit breaker open, waiting {delay}s before retry")
-            time.sleep(delay)
+        delay = Config.get("misc.timeouts.recreate_max_delay")
+        if debug:
+            debug_logger.warning(f"{self.name} waiting {delay}s before recreating")
+        time.sleep(delay)
 
-    def acquire_driver(self) -> bool:
-        debug_mode = debug
-        if debug_mode:
-            debug_logger.debug(f"{self.name}: Acquiring driver with blocking semantics")
+    def return_driver(self) -> None:
+        if not self.driver:
+            return
         try:
-            self.driver = acquire_driver_with_pressure_check(self.driver_pool, context=self.name)
-            if self.driver is not None:
-                if debug_mode:
-                    debug_logger.debug(f"{self.name}: Successfully acquired driver")
-                return True
-            else:
-                if debug_mode:
-                    debug_logger.error(f"{self.name}: Failed to acquire driver")
-                return False
+            self.driver_pool.return_driver(self.driver)
         except Exception as e:
-            if debug_mode:
-                debug_logger.error(f"{self.name}: Exception during driver acquisition: {e}", exc_info=True)
-            return False
-
-    def cleanup_driver(self) -> None:
-        if self.driver:
-            try:
-                self.driver_pool.return_driver(self.driver)
-            except Exception as e:
-                debug_logger.error(f"{self.name}: Error returning driver: {e}")
-            self.driver = None
+            debug_logger.error(f"Returning {self.name}: {e}")
+        self.driver = None
 
     def stop(self) -> None:
         self.task_queue.put(None)
@@ -172,44 +126,45 @@ class Worker(threading.Thread):
                 'exit_reason': self._exit_reason
             }
     
-    def _should_return_driver_for_pressure(self) -> bool:
+    def _should_destroy_driver_for_pressure(self):
         if not self.driver or not self.driver_pool:
-            return False
-        
-        if self.driver_pool.should_close_driver_for_pressure():
-            if not self.manager:
-                self.driver_pool.mark_driver_closed_for_pressure()
-                
-                try:
-                    self.driver_pool._destroy(self.driver)
-                    self.driver = None
-                    return True
-                except Exception as e:
-                    debug_logger.error(f"{self.name}: Error destroying driver under pressure: {e}")
-                    return False
-            
-            now = time.monotonic()
-            
-            with self.manager._stats_lock:
-                if now - self.manager.last_scale_down_time >= self.manager.scale_down_cooldown:
-                    if self.manager._scale_downs_this_cycle < self.manager.scale_down_step:
-                        self.manager._scale_downs_this_cycle += 1
-                        self.manager.last_scale_down_time = now
-                        
-                        debug_logger.info(f"{self.name}: Reclaiming driver under pressure (cycle {self.manager._scale_downs_this_cycle}/{self.manager.scale_down_step})")
-                        
-                        try:
-                            self.driver_pool._destroy(self.driver)
-                            self.driver = None
-                            return True
-                        except Exception as e:
-                            debug_logger.error(f"{self.name}: Error destroying driver under pressure: {e}")
-                            return False
-            
-            return False
-        else:
+            return
+
+        if not self.driver_pool.should_close_driver_for_pressure():
             if self.manager:
                 with self.manager._stats_lock:
                     self.manager._scale_downs_this_cycle = 0
-            
-        return False
+            return
+
+        if not self.manager:
+            self.driver_pool.mark_driver_closed_for_pressure()
+            try:
+                self.driver_pool._destroy(self.driver)
+            except Exception as e:
+                debug_logger.error(f"Destroying {self.name} under pressure: {e}")
+            finally:
+                self.driver = None
+            return
+
+        now = time.monotonic()
+        with self.manager._stats_lock:
+            if now - self.manager.last_scale_down_time < self.manager.scale_down_cooldown:
+                return
+            if self.manager._scale_downs_this_cycle >= self.manager.scale_down_step:
+                return
+
+        self.manager._scale_downs_this_cycle += 1
+        self.manager.last_scale_down_time = now
+
+        monitor_details.info(
+            f"[DESTROY_DRIVER] {self.name} under pressure "
+            f"(cycle {self.manager._scale_downs_this_cycle}/{self.manager.scale_down_step})"
+        )
+
+        try:
+            self.driver_pool._destroy(self.driver)
+        except Exception as e:
+            debug_logger.error(f"Destroying {self.name} under pressure: {e}")
+        finally:
+            self.driver = None
+

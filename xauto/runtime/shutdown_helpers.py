@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
-from xauto.utils.logging import debug_logger, monitor_details
+from xauto.utils.logging import debug_logger
 from xauto.utils.setup import debug
 
 from typing import Callable, Any
 
 def shutdown_component(name: str, close_fn: Callable) -> None:
-    monitor_details.info(f"{name}: shutting down")
+    debug_logger.info(f"{name}: shutting down")
     try:
         close_fn()
     except Exception as e:
@@ -22,7 +22,7 @@ def shutdown_component_with_timeout(
         debug_logger.warning(f"No {name} to close")
         return
     
-    monitor_details.info(f"Initiating {name} shutdown…")
+    debug_logger.info(f"Initiating {name} shutdown…")
     try:
         if hasattr(component, shutdown_method):
             method = getattr(component, shutdown_method)
@@ -36,10 +36,10 @@ def shutdown_component_with_timeout(
         debug_logger.error(f"Error during {name}.{shutdown_method}(): {e}", exc_info=debug)
 
     if hasattr(component, "close_all"):
-        monitor_details.info(f"{name}: calling close_all() to ensure full cleanup")
+        debug_logger.info(f"{name}: calling close_all() to ensure full cleanup")
         try:
             component.close_all()
         except Exception as e:
             debug_logger.error(f"{name}.close_all() error: {e}", exc_info=debug)
 
-    monitor_details.info(f"{name} closed") 
+    debug_logger.info(f"{name} closed") 

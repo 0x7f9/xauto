@@ -16,10 +16,10 @@ def _start_loggers() -> None:
     if not _loggers_initialized:
         with _logger_lock:
             if not _loggers_initialized:
-                _initialize_loggers()
+                _init_loggers()
                 _loggers_initialized = True
 
-def _initialize_loggers() -> None:
+def _init_loggers() -> None:
     os.makedirs(os.path.dirname(MAIN_LOG_FILE), exist_ok=True)
     
     monitor_details = logging.getLogger("monitor_details")
@@ -52,7 +52,7 @@ def _initialize_loggers() -> None:
     logging.getLogger("selenium.webdriver").setLevel(logging.WARNING)
     logging.getLogger("geckodriver").setLevel(logging.WARNING)
 
-    monitor_details.info("Session initialized with random user agents per driver")
+    monitor_details.info("[INIT] Setup session with random user agents per driver")
 
 _start_loggers()
 
