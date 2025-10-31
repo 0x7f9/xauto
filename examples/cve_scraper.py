@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 import os 
-import sys 
+import sys
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from xauto.bootstrap.build import bootstrap
@@ -13,12 +14,12 @@ from xauto.utils.config import Config
 from xauto.runtime.lifecycle import setup_runtime, teardown_runtime
 from xauto.utils.page_loading import wait_for_page_load
 from xauto.utils.validation import is_bot_page
-
-import lxml.html
+from xauto.utils.utility import counter
+from xauto.utils.common import status_print 
 
 config = Config()
 config.set("proxy.enabled", False)
-config.set("system.headless", True)
+config.set("system.headless", False)
 config.freeze()
 
 BASE_URL = "https://www.cvedetails.com/cve/"
@@ -28,7 +29,8 @@ TARGETS_CVE = [
     {'cve_id': 'CVE-2025-476'}
 ]
 
-def scrape(task, driver):
+def scrape(current_task, driver, tasks):
+    task = tasks[current_task]
     cve_id = task['cve_id']
     url = f"{BASE_URL}{cve_id}/"
     print(f"[xauto] Loading {url}")
@@ -36,22 +38,35 @@ def scrape(task, driver):
 
     if not wait_for_page_load(driver, timeout=2):
         print("Page did not load")
+        counter("failed")
         return
 
     if is_bot_page(driver, driver.current_url):
         print("Bot page has been detected")
+        counter("invalid")
         return
 
-    root = lxml.html.fromstring(driver.page_source)
-    print(root)
+    print(driver.page_source[:100])
+    counter("completed")
     return
 
-task_manager, driver_pool = setup_runtime(task_processor=scrape)
+task_manager, driver_pool = setup_runtime(task_processor=scrape, tasks=TARGETS_CVE)
 
-for task in TARGETS_CVE:
-    task_manager.add_task(task)
+# you can set the runtime up with a empty list,
+# and then add to the existing runtime_state like so
+# from xauto.runtime.lifecycle import runtime_state
+# runtime_state['tasks'].extend(TARGETS_CVE)
+
+task_manager.add_tasks(range(len(TARGETS_CVE)))
 
 task_manager.wait_completion()
 teardown_runtime(task_manager, driver_pool)
+
+from xauto.runtime.lifecycle import runtime_state
+start_time = runtime_state['start_time']
+tasks = runtime_state['tasks']
+outcomes = runtime_state['outcomes']
+
+status_print(start_time, tasks, outcomes)
 
 print("\nDone.")
