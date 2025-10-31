@@ -10,6 +10,7 @@ Basic example demonstrating:
 ### `cve_scraper.py`
 Minimal example demonstrating:
 - Config loading and freezing
+- Demonstrate runtime state tracking
 - Task manager and driver pool setup
 - Loading multiple URLs in parallel
 - Waits for page load with JS API injection
@@ -108,9 +109,14 @@ For simplicity and minimal boilerplate, the recommended approach is to use the `
 from xauto.utils.config import Config
 from xauto.runtime.lifecycle import setup_runtime, teardown_runtime
 
-# initialize configuration
+# init configuration
 config = Config()
 config.freeze()
+
+TASKS = [
+    {"url": "https://example.com", "something": "value"},
+    {"url": "https://example1.com", "something": "value"}
+]
 
 # define your task function
 def your_task_function(task_data, driver):
@@ -119,13 +125,18 @@ def your_task_function(task_data, driver):
     # add your scraping or automation logic here
     return driver.title
 
-# setup runtime with 5 workers
+# setup runtime
 task_manager, driver_pool = setup_runtime(
     task_processor=your_task_function
 )
 
-# add your tasks
-task_manager.add_task({'url': 'https://example.com'})
+# you can set the runtime up with a empty list,
+# and then add to the existing runtime_state like so
+# from xauto.runtime.lifecycle import runtime_state
+# runtime_state['tasks'].extend(TASKS)
+
+# add your tasks to the pool
+task_manager.add_tasks(range(len(TASKS)))
 
 # wait for completion
 task_manager.wait_completion()
@@ -140,4 +151,5 @@ The `setup_runtime()` function automatically:
 - Starts resource monitoring threads
 - Handles configuration and logging setup
 - Returns ready to use task_manager and driver_pool objects
+- Sets up runtime state tracking
 
