@@ -42,7 +42,7 @@ resources:
       
     pressure_blocking:
       # during high load max time a driver will wait before going ahead with its work. 
-      max_navigation_wait_time: 30.0
+      max_wait_time: 30.0
       # workers wait in N second chunks before checking again
       wait_chunk_time: 3.0
 

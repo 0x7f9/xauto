@@ -21,8 +21,10 @@ def load_page_with_high_load_check(driver, url, timeout=8):
     driver_pool = get_driver_pool()
     if driver_pool:
         from xauto.internal.memory import wait_high_load
-        forced = wait_high_load(driver_pool, context="validation.navigate", url=url)
-        driver._forced_navigation = forced
+        context = "validation.navigate"
+        forced = wait_high_load(driver_pool, context=context, url=url)
+        if forced:
+            debug_logger.warning(f"[LOAD_PAGE] Forced nav due to max_wait_time during {context}")
     
     try:
         driver.get(url)
@@ -50,7 +52,7 @@ def explicit_page_load(driver: WebDriver, wait_for: Optional[float] = None) -> b
     return True
 
 @require_connected(False)
-def ensure_body_stable(driver, timeout=10, poll=0.1):
+def _ensure_body_stable(driver, timeout=10, poll=0.1):
     deadline = time.monotonic() + timeout
     last_height = driver.execute_script(_SCROLL_HEIGHT)
     stable_since = time.monotonic()
@@ -106,7 +108,7 @@ def wait_for_page_load(driver: WebDriver, timeout: Optional[float] = None) -> bo
                 s, int(max(0, (deadline - time.monotonic()) * 1000))
             )
             if ready:
-                ensure_body_stable(driver, timeout=5)
+                _ensure_body_stable(driver, timeout=5)
                 load_time = driver.execute_script(_LOAD_TIME) / 1000.0
                 debug_logger.debug(f"[PAGE_LOAD] Load time: {load_time:.2f}s")
                 return True

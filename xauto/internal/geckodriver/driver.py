@@ -43,7 +43,7 @@ class DriverPool:
         '_created', '_errors', '_info', '_driver_objects', '_termination_failures', 
         'proxy_enabled', 'proxies', '_proxy_index', 'no_ssl_verify', 'use_auth', '_in_use', 
         'username', 'password', 'socks5', 'dns_resolver', '_logger', '_shutdown',
-        '_seleniumwire_webdriver', '_pressure_lock', '_spawn_blocked', '_spawn_budget',
+        '_seleniumwire_webdriver', '_pressure_lock', '_high_load', '_spawn_budget',
         '_last_scale_down_time', '_consecutive_high_load_count', 
     )
     
@@ -72,7 +72,7 @@ class DriverPool:
         self._shutdown = False
         self._last_scale_down_time = 0.0
         self._consecutive_high_load_count = 0
-        self._spawn_blocked = False
+        self._high_load = False
         
         driver_spawning = Config.get("resources.driver_spawning")
         spawn_window_sec = driver_spawning.get("spawn_window_sec")
@@ -215,23 +215,33 @@ class DriverPool:
         debug_logger.info(f"[DRIVER_CREATE_RETRIES] failed in {max_retries} attempts")
         return None
 
-    def wait_for_unlock(self, timeout: float):
+    def wait_for_unblock(self, timeout: Optional[float] = None) -> bool:
         with self._lock:
-            self._lock.wait(timeout=timeout)
-            
-    def set_spawn_blocked(self, blocked: bool):
+            deadline = None if timeout is None else time.monotonic() + timeout
+
+            while self._high_load:
+                if deadline is not None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return False
+                    self._lock.wait(timeout=remaining)
+                else:
+                    self._lock.wait()
+            return True
+
+    def set_high_load(self, blocked: bool):
         with self._lock:
-            prev = self._spawn_blocked
+            prev = self._high_load
             if prev == blocked:
                 return
-            self._spawn_blocked = blocked
+            self._high_load = blocked
             if not blocked:
                 self._lock.notify_all()
 
     @property
-    def is_spawn_blocked(self):
+    def is_high_load(self):
         with self._lock:
-            return self._spawn_blocked
+            return self._high_load
 
     def get_driver_with_injection(self, timeout=None, skip_high_load_wait=False):
         drv = self.get_driver(timeout=timeout, skip_high_load_wait=skip_high_load_wait)
@@ -511,7 +521,7 @@ class DriverPool:
 
     def can_create_driver(self) -> bool:
         return (
-            not self._spawn_blocked and
+            not self._high_load and
             self._spawn_budget.can_spawn(self) and
             not self._shutdown
         )
@@ -536,7 +546,7 @@ class DriverPool:
                 'max_size': self._max_size if self._max_size != float('inf') else 'inf',
                 'auto_mode': self._auto_mode,
                 'shutdown': self._shutdown,
-                'spawn_blocked': self._spawn_blocked,
+                'high_load': self._high_load,
                 'spawn_budget_remaining': self._spawn_budget.get_remaining(self),
                 'can_create_driver': self.can_create_driver()
             }

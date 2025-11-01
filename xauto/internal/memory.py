@@ -31,18 +31,18 @@ class DriverSpawnBudget:
                 self.spawn_count = 0
                 self.window_start = now
 
-            spawn_blocked = driver_pool.is_spawn_blocked if driver_pool else False
+            high_load = driver_pool.is_high_load if driver_pool else False
 
             if driver_pool and driver_pool.drivers_inuse >= driver_pool.max_size:
                 monitor_details.info(f"[CAN_SPAWN] denied pool full ({driver_pool.drivers_inuse}/{driver_pool.max_size})")
                 return False
 
-            if self.spawn_count < self.max_per_window and not spawn_blocked:
+            if self.spawn_count < self.max_per_window and not high_load:
                 self.spawn_count += 1
                 monitor_details.info(f"[CAN_SPAWN] allowed spawn_count={self.spawn_count}")
                 return True
 
-            monitor_details.info(f"[CAN_SPAWN] denied spawn_blocked={spawn_blocked}, spawn_count={self.spawn_count}")
+            # monitor_details.info(f"[CAN_SPAWN] denied high_load={high_load}, spawn_count={self.spawn_count}")
             return False
     
     def get_remaining(self, driver_pool=None) -> int:
@@ -51,7 +51,7 @@ class DriverSpawnBudget:
             if now - self.window_start > self.window_size_sec:
                 return self.max_per_window
             
-            if driver_pool and not driver_pool.is_spawn_blocked:
+            if driver_pool and not driver_pool.is_high_load:
                 return 999999
             
             return max(0, self.max_per_window - self.spawn_count)
@@ -207,7 +207,7 @@ class MemoryMonitor:
         '_cache_duration', '_max_history', '_memory_threshold', '_cpu_threshold',
         '_last_check', '_cached_memory_percent', '_cached_cpu_percent', '_last_update_result',
         '_update_in_progress', '_history_memory', '_history_cpu', '_last_cpu_times', '_state_lock',
-        '_last_spawn_block_change', '_spawn_hysteresis_time', '_spawn_blocked_state',
+        '_last_high_load_change', '_spawn_hysteresis_time', '_high_load_state',
         '_histogram_memory', '_histogram_cpu', '_histogram_bins', '_last_cpu_times_set'
     )
     
@@ -241,8 +241,8 @@ class MemoryMonitor:
         self._update_in_progress = 0
         self._last_update_result = ResourceStats(0.0, 0.0)
         
-        self._last_spawn_block_change = 0.0
-        self._spawn_blocked_state = False
+        self._last_high_load_change = 0.0
+        self._high_load_state = False
 
         init_mem = _read_memory_percent()
         init_cpu = 0.0  
@@ -366,40 +366,40 @@ class MemoryMonitor:
         min_samples = 5
         ok = len(self._histogram_cpu) >= min_samples and len(self._histogram_memory) >= min_samples
         if not ok:
-            monitor_details.warning("[CHECK_LOAD] Skipping spawn_block check, not enough samples")
+            monitor_details.warning("[CHECK_LOAD] Skipping high_load check, not enough samples")
             return False
         
         hist_mem_ratio = self.get_histogram_pressure_ratio("memory", self._memory_threshold)
         hist_cpu_ratio = self.get_histogram_pressure_ratio("cpu", self._cpu_threshold)
         
         current_time = time.monotonic()
-        time_since_last_change = current_time - self._last_spawn_block_change
+        time_since_last_change = current_time - self._last_high_load_change
         
         sustained_pressure_threshold = 0.5
         should_block = hist_mem_ratio > sustained_pressure_threshold or hist_cpu_ratio > sustained_pressure_threshold
         should_unblock = hist_mem_ratio < 0.3 and hist_cpu_ratio < 0.3
         
-        prev_spawn_blocked = self._spawn_blocked_state
+        prev_high_load = self._high_load_state
         
-        if self._spawn_blocked_state and should_unblock and time_since_last_change >= self._spawn_hysteresis_time:
-            self._spawn_blocked_state = False
-            self._last_spawn_block_change = current_time
-            monitor_details.info(f"[CHECK_LOAD] spawn_blocked = False (unblocked: mem_hist={hist_mem_ratio:.1%}, cpu_hist={hist_cpu_ratio:.1%})")
-        elif not self._spawn_blocked_state and should_block and time_since_last_change >= self._spawn_hysteresis_time:
-            self._spawn_blocked_state = True
-            self._last_spawn_block_change = current_time
-            monitor_details.info(f"[CHECK_LOAD] spawn_blocked = True (blocked: mem_hist={hist_mem_ratio:.1%}, cpu_hist={hist_cpu_ratio:.1%})")
+        if self._high_load_state and should_unblock and time_since_last_change >= self._spawn_hysteresis_time:
+            self._high_load_state = False
+            self._last_high_load_change = current_time
+            monitor_details.info(f"[CHECK_LOAD] high_load = False (unblocked: mem_hist={hist_mem_ratio:.1%}, cpu_hist={hist_cpu_ratio:.1%})")
+        elif not self._high_load_state and should_block and time_since_last_change >= self._spawn_hysteresis_time:
+            self._high_load_state = True
+            self._last_high_load_change = current_time
+            monitor_details.info(f"[CHECK_LOAD] high_load = True (blocked: mem_hist={hist_mem_ratio:.1%}, cpu_hist={hist_cpu_ratio:.1%})")
         
-        if self._spawn_blocked_state != prev_spawn_blocked:
+        if self._high_load_state != prev_high_load:
             monitor_details.info(
-                f"[CHECK_LOAD] spawn_blocked {prev_spawn_blocked} -> {self._spawn_blocked_state} "
+                f"[CHECK_LOAD] high_load {prev_high_load} -> {self._high_load_state} "
                 f"(mem_hist={hist_mem_ratio:.1%}, cpu_hist={hist_cpu_ratio:.1%})"
             )
         
         if driver_pool:
-            driver_pool.set_spawn_blocked(self._spawn_blocked_state)
+            driver_pool.set_high_load(self._high_load_state)
 
-        return self._spawn_blocked_state
+        return self._high_load_state
 
     def get_histogram_pressure_ratio(self, kind: str, threshold: float) -> float:
         if kind == "memory":
@@ -525,26 +525,26 @@ def resource_pressure_monitor(driver_pool, stop_event):
             approaching_mem_limit = avg_mem > dynamic_mem_threshold
             approaching_cpu_limit = avg_cpu > dynamic_cpu_threshold
             
-            prev_spawn_blocked = driver_pool.is_spawn_blocked
+            prev_high_load = driver_pool.is_high_load
             
-            if prev_spawn_blocked:
-                spawn_block = under_pressure or avg_mem > mem_release_threshold or avg_cpu > cpu_release_threshold
+            if prev_high_load:
+                high_load = under_pressure or avg_mem > mem_release_threshold or avg_cpu > cpu_release_threshold
             else:
-                spawn_block = under_pressure or approaching_mem_limit or approaching_cpu_limit
+                high_load = under_pressure or approaching_mem_limit or approaching_cpu_limit
             
             driver_pool.set_consecutive_high_load(under_pressure)
-            driver_pool.set_spawn_blocked(spawn_block)
-            new_spawn_blocked = driver_pool.is_spawn_blocked
+            driver_pool.set_high_load(high_load)
+            new_high_load = driver_pool.is_high_load
             
-            if new_spawn_blocked != prev_spawn_blocked:
-                monitor_details.info(f"[MONITOR_THREAD] spawn_blocked changed: {prev_spawn_blocked} -> {new_spawn_blocked}")
+            if new_high_load != prev_high_load:
+                monitor_details.info(f"[MONITOR_THREAD] high_load changed: {prev_high_load} -> {new_high_load}")
                 monitor_details.info(
                     f"[MONITOR_THREAD] reason: under_pressure={under_pressure}, "
                     f"approaching_mem={approaching_mem_limit}, approaching_cpu={approaching_cpu_limit}"
                 )
             
             if should_log:
-                if spawn_block:
+                if high_load:
                     monitor_details.info(
                         f"[MONITOR_THREAD] Spawn blocked: memory > {dynamic_mem_threshold:.1f}% or cpu > "
                         f"{dynamic_cpu_threshold:.1f}% or sustained pressure"
@@ -561,10 +561,10 @@ def resource_pressure_monitor(driver_pool, stop_event):
                     debug_logger.error(f"[MONITOR_THREAD] idle drivers {e}")
             
             if should_log:
-                spawn_blocked = driver_pool.is_spawn_blocked if driver_pool else False
+                high_load = driver_pool.is_high_load if driver_pool else False
                 monitor_details.info(
                     f"[MONITOR_THREAD] System state: memory={avg_mem:.1f}%, cpu={avg_cpu:.1f}%, "
-                    f"spawn_blocked={spawn_blocked}"
+                    f"high_load={high_load}"
                 )
                 monitor_details.info(f"[MONITOR_THREAD] Pressure ratios: mem_hist={hist_mem_ratio:.1%}, cpu_hist={hist_cpu_ratio:.1%}")
                 monitor_details.info(
@@ -582,11 +582,14 @@ def acquire_driver_with_pressure_check(driver_pool, context="unknown"):
         return None
     
     memory_monitor = get_memory_monitor()
+    memory_monitor.check_load(driver_pool)
     
-    while driver_pool.is_spawn_blocked:
+    if driver_pool.is_high_load:
         debug_logger.warning(f"[ACQUIRE_DRIVER] blocked due to system pressure in {context}")
-        memory_monitor.check_load(driver_pool)
-        driver_pool.wait_for_unlock(timeout=10.0)  
+        timed_out = wait_high_load(driver_pool, context=context)
+        if timed_out:
+            debug_logger.error(f"[ACQUIRE_DRIVER] giving up after max_wait_time in {context}")
+            return None
     
     try:
         driver = driver_pool.get_driver_with_injection(skip_high_load_wait=True)
@@ -598,35 +601,52 @@ def acquire_driver_with_pressure_check(driver_pool, context="unknown"):
 def wait_high_load(driver_pool: Any, context: str = "unknown", url: Optional[str] = None) -> bool:
     memory_monitor = get_memory_monitor()
     memory_monitor.check_load(driver_pool)
-    
+
     block_cfg = Config.get("resources.memory_tuning.pressure_blocking")
-    max_wait_time = block_cfg.get("max_navigation_wait_time", 30.0)
-    wait_chunk_time = block_cfg.get("wait_chunk_time", 3.0)
-    
+    max_wait_time = float(block_cfg.get("max_wait_time", 30.0))
+    wait_chunk_time = float(block_cfg.get("wait_chunk_time", 3.0))
+
     wait_start = time.monotonic()
     pool_stats = driver_pool.get_pool_stats()
-    
-    if driver_pool.is_spawn_blocked:
-        monitor_details.debug(f"[HIGH_LOAD] START {context}: spawn_blocked={driver_pool.is_spawn_blocked}, pool_stats={pool_stats}")
-    
+
+    if driver_pool.is_high_load:
+        monitor_details.debug(
+            f"[HIGH_LOAD] START {context}: high_load={driver_pool.is_high_load}, "
+            f"pool_stats={pool_stats}")
+
     last_block_log = wait_start
-    while driver_pool.is_spawn_blocked:
+    while driver_pool.is_high_load:
         elapsed = time.monotonic() - wait_start
-        if elapsed >= max_wait_time:
-            monitor_details.info(f"[HIGH_LOAD] blocking timeout after {elapsed:.1f}s waiting for spawn unblock in {context}{f' (url={url})' if url else ''}")
-            return True 
-        
+        remaining_total = max_wait_time - elapsed
+        if remaining_total <= 0:
+            monitor_details.info(
+                f"[HIGH_LOAD] blocking timeout after {elapsed:.1f}s waiting "
+                f"for unblock in {context}{f' (url={url})' if url else ''}"
+            )
+            return True
+
         now = time.monotonic()
-        if now - last_block_log >= 5.0: 
-            monitor_details.info(f"[HIGH_LOAD] blocked for {elapsed:.1f}s in {context}{f' (url={url})' if url else ''}")
-            
+        if now - last_block_log >= 5.0:
+            monitor_details.info(
+                f"[HIGH_LOAD] blocked for {elapsed:.1f}s in {context}{f' (url={url})' if url else ''}"
+            )
+            last_block_log = now
+
         jitter = wait_chunk_time + random.uniform(0.1, 0.3)
-        driver_pool.wait_for_unlock(jitter)  
-    
+        chunk = min(jitter, remaining_total)
+
+        unblocked = driver_pool.wait_for_unblock(timeout=chunk)
+        if unblocked:
+            break
+
+        memory_monitor.check_load(driver_pool)
+
     elapsed = time.monotonic() - wait_start
     if elapsed > 0:
         pool_stats = driver_pool.get_pool_stats()
-        monitor_details.info(f"[HIGH_LOAD] END {context}: elapsed={elapsed:.1f}s, spawn_blocked={driver_pool.is_spawn_blocked}, pool_stats={pool_stats}")
-        
-    return False  
+        monitor_details.info(
+            f"[HIGH_LOAD] END {context}: elapsed={elapsed:.1f}s, high_load={driver_pool.is_high_load}, pool_stats={pool_stats}"
+        )
+
+    return False
 
