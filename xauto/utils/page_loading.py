@@ -7,10 +7,12 @@ from xauto.utils.utility import require_connected
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import TimeoutException
 from typing import Optional
 import time
 
 _LOAD_TIME = "return window.performance.timing.loadEventEnd - window.performance.timing.navigationStart"
+_SCROLL_HEIGHT = "return document.body.scrollHeight;"
 
 def load_page_with_high_load_check(driver, url, timeout=8):
     from xauto.utils.browser_utils import close_popups
@@ -48,6 +50,22 @@ def explicit_page_load(driver: WebDriver, wait_for: Optional[float] = None) -> b
     return True
 
 @require_connected(False)
+def ensure_body_stable(driver, timeout=10, poll=0.1):
+    deadline = time.monotonic() + timeout
+    last_height = driver.execute_script(_SCROLL_HEIGHT)
+    stable_since = time.monotonic()
+
+    while time.monotonic() < deadline:
+        time.sleep(poll)
+        height = driver.execute_script(_SCROLL_HEIGHT)
+        if height != last_height:
+            last_height = height
+            stable_since = time.monotonic()
+        elif time.monotonic() - stable_since > 1:
+            return True
+    return False
+
+@require_connected(False)
 def wait_for_page_load(driver: WebDriver, timeout: Optional[float] = None) -> bool:
     from xauto.utils.browser_utils import close_popups
     close_popups(driver)
@@ -62,35 +80,40 @@ def wait_for_page_load(driver: WebDriver, timeout: Optional[float] = None) -> bo
         debug_logger.debug("Could not procced with [wait_for_page_load] due to failed injection")
         return False
 
-    try:
-        driver.set_script_timeout(int(t + 2))
+    driver.set_script_timeout(int(t + 2))
 
-        s = """
-            var cb = arguments[arguments.length - 1];
-            var timeout = arguments[0] || 10000;
+    s = """
+        var cb = arguments[arguments.length - 1];
+        var timeout = arguments[0] || 10000;
 
-            try {
-                if (window._xautoAPI && typeof window._xautoAPI.waitForReady === 'function') {
-                    window._xautoAPI.waitForReady(timeout)
-                        .then(result => cb(result))
-                        .catch(() => cb(false));
-                } else {
-                    cb(false);
-                }
-            } catch (e) {
+        try {
+            if (window._xautoAPI && typeof window._xautoAPI.waitForReady === 'function') {
+                window._xautoAPI.waitForReady(timeout)
+                    .then(result => cb(result))
+                    .catch(() => cb(false));
+            } else {
                 cb(false);
             }
-        """
+        } catch (e) {
+            cb(false);
+        }
+    """
 
-        ready = driver.execute_async_script(s, int(t * 1000)) 
-
-        if ready:
-            load_time = driver.execute_script(_LOAD_TIME) / 1000.0
-            debug_logger.debug(f"[PAGE_LOAD] Load time: {load_time:.2f}s")
-            return True
-
-    except Exception as e:
-        debug_logger.debug(f"[PAGE_LOAD] Promise wait failed: {e}")
+    deadline = time.monotonic() + t
+    while time.monotonic() < deadline:
+        try:
+            ready = driver.execute_async_script(
+                s, int(max(0, (deadline - time.monotonic()) * 1000))
+            )
+            if ready:
+                ensure_body_stable(driver, timeout=5)
+                load_time = driver.execute_script(_LOAD_TIME) / 1000.0
+                debug_logger.debug(f"[PAGE_LOAD] Load time: {load_time:.2f}s")
+                return True
+        except TimeoutException:
+            continue 
+        except Exception:
+            break
 
     return False
 

@@ -183,12 +183,13 @@ class TaskManager:
     def _scale_workers_if_needed(self) -> None:
         qsize = self.task_queue.qsize()
         current_workers = len(self.workers)
-        can_create_driver = self.driver_pool.can_create_driver()
+        
+        if current_workers >= self.max_workers:
+            return
         
         if (
             qsize > 0
-            and current_workers < self.max_workers
-            and can_create_driver
+            and self.driver_pool.can_create_driver()
         ):
             workers_to_add = min(
                 self.scale_up_step,
