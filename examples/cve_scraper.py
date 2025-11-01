@@ -30,25 +30,29 @@ TARGETS_CVE = [
 ]
 
 def scrape(current_task, driver, tasks):
-    task = tasks[current_task]
-    cve_id = task['cve_id']
-    url = f"{BASE_URL}{cve_id}/"
-    print(f"[xauto] Loading {url}")
-    driver.get(url)
+    try:
+        task = tasks[current_task]
+        cve_id = task['cve_id']
+        url = f"{BASE_URL}{cve_id}/"
+        print(f"[xauto] Loading {url}")
+        driver.get(url)
 
-    if not wait_for_page_load(driver, timeout=2):
-        print("Page did not load")
+        if not wait_for_page_load(driver, timeout=2):
+            print("Page did not load")
+            counter("failed")
+            return
+
+        if is_bot_page(driver, driver.current_url):
+            print("Bot page has been detected")
+            counter("invalid")
+            return
+
+        print(driver.page_source[:100])
+        counter("successful")
+    except:
         counter("failed")
-        return
-
-    if is_bot_page(driver, driver.current_url):
-        print("Bot page has been detected")
-        counter("invalid")
-        return
-
-    print(driver.page_source[:100])
-    counter("completed")
-    return
+    finally:
+        counter("completed")
 
 task_manager, driver_pool = setup_runtime(task_processor=scrape, tasks=TARGETS_CVE)
 
