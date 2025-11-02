@@ -1,7 +1,7 @@
 from xauto.internal.geckodriver.driver import get_driver_pool
 from xauto.utils.config import Config
 from xauto.utils.injection import ensure_injected
-from xauto.utils.logging import debug_logger, monitor_details as md
+from xauto.utils.logging import debug_logger
 from xauto.utils.utility import require_connected
 
 from selenium.webdriver.support.ui import WebDriverWait
@@ -29,11 +29,11 @@ def load_page_with_high_load_check(driver, url, timeout=8):
     try:
         driver.get(url)
     except Exception as e:
-        md.info(f"[DEBUG] {url} marked invalid: driver.get() failed: {e}")
+        debug_logger.error(f"[LOAD_PAGE] {url}: driver.get() failed: {e}")
         return False
     
     if not wait_for_page_load(driver, timeout=timeout):
-        md.info(f"[DEBUG] {url} marked invalid: wait_for_page_load() timeout")
+        debug_logger.warning(f"[DEBUG] {url} marked invalid: wait_for_page_load() timeout")
         return False
     
     return True
@@ -121,9 +121,9 @@ def wait_for_page_load(driver: WebDriver, timeout: Optional[float] = None) -> bo
 
 @require_connected(False)
 def ensure_body_loaded(driver: WebDriver, timeout: Optional[float] = None) -> bool:
-    timeout = timeout or Config.get("misc.timeouts.body_load")
+    timeout = timeout or float(Config.get("misc.timeouts.body_load"))
     try:
-        WebDriverWait(driver, timeout).until(lambda d: d.find_element(By.CSS_SELECTOR, "body"))  # type: ignore
+        WebDriverWait(driver, timeout).until(lambda d: d.find_element(By.CSS_SELECTOR, "body"))  
         return True
     except Exception:
         debug_logger.debug("[BODY_CHECK] Body element not found within timeout")
