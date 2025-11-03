@@ -55,13 +55,18 @@ def scrape(current_task, driver, tasks):
         counter("completed")
 
 task_manager, driver_pool = setup_runtime(task_processor=scrape, tasks=TARGETS_CVE)
+task_manager.add_tasks(range(len(TARGETS_CVE)))
 
 # you can set the runtime up with a empty list,
-# and then add to the existing runtime_state like so
-# from xauto.runtime.lifecycle import runtime_state
+# then add to the existing runtime_state and manager
+# this can also be used to update the runtime
+# with new tasks without restarting the current session
+# task_manager, driver_pool = setup_runtime(
+#     task_processor=scrape,
+#     tasks=[]
+# )  
 # runtime_state['tasks'].extend(TARGETS_CVE)
-
-task_manager.add_tasks(range(len(TARGETS_CVE)))
+# task_manager.tasks = TARGETS_CVE
 
 task_manager.wait_completion()
 teardown_runtime(task_manager, driver_pool)
