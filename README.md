@@ -68,12 +68,20 @@ driver.get()
 
 from xauto.internal.memory import wait_high_load
 # blocks the threads runtime preventing url navigation or DOM traverals
-forced = wait_high_load(pool, context="validation.navigate", url=base_url)
+forced = wait_high_load(pool, context="validation.navigate", url=url)
 driver._forced_navigation = forced
 ```
 
 ### Browser Validation Checks
 ```python
+from xauto.utils.validation import is_up
+# quick page probe before trying a driver.get()
+up, status_code = is_up(url, driver)
+if not up:
+    print(f"Page is not up {status_code}")
+    # handle error here
+# else continue with driver.get()
+
 from xauto.utils.validation import is_browser_error_page
 if is_browser_error_page(driver):
     print("Browser error page detected")
