@@ -35,6 +35,7 @@ resources:
       adjust_rate: 2
       
     pressure:
+      history_decay: 0.65
       history: 5
       system_check_interval: 2.0
       mem_threshold: 75.0

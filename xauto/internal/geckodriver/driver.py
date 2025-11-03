@@ -39,7 +39,7 @@ def get_driver_pool(
 
 class DriverPool:
     __slots__ = (
-        '_lock', '_auto_mode', '_max_size', '_pool', '_drv_path', '_service', '_options', 
+        '_lock', '_auto_mode', '_max_size', '_pool', '_drv_path', '_options', 
         '_created', '_errors', '_info', '_driver_objects', '_termination_failures', 
         'proxy_enabled', 'proxies', '_proxy_index', 'no_ssl_verify', 'use_auth', '_in_use', 
         'username', 'password', 'socks5', 'dns_resolver', '_logger', '_shutdown',
@@ -124,7 +124,7 @@ class DriverPool:
                 self._proxy_index = 0
             else:
                 cprint("Proxies are enabled but the proxy list is empty. No proxies will be used.", "red")
-                self._proxy_index = -1
+                self.proxy_enabled = False
 
     def _format_proxy(self, raw: str) -> str:
         if ":" not in raw:
@@ -143,10 +143,9 @@ class DriverPool:
 
         drv = None
         try:
-            use_proxy = self.proxy_enabled and self._proxy_index >= 0
             selected_proxy = None
 
-            if use_proxy:
+            if self.proxy_enabled:
                 selected_proxy = self.proxies[self._proxy_index]
                 self._proxy_index = (self._proxy_index + 1) % len(self.proxies)
 
@@ -274,7 +273,7 @@ class DriverPool:
                 
                 drv = self._create_driver_with_retries()
             else:
-                drv = self._pool.get(timeout=30)
+                drv = self._pool.get(timeout=timeout)
 
         with self._lock:
             info = self._info.get(id(drv))
@@ -422,7 +421,7 @@ class DriverPool:
             for driver_id, info in list(self._info.items()):
                 if info.last_access > 0:
                     continue 
-                if current_time - info.heap_timestamp > max_idle_time:
+                if current_time - info.last_access > max_idle_time:
                     drivers_to_remove.append(driver_id)
 
         if not drivers_to_remove:
@@ -450,13 +449,9 @@ class DriverPool:
             f"in_use={stats['in_use']}, errors={stats['errors']}, max_size={stats['max_size']}"
         )
 
-    def return_driver_size(self):
-        return self._pool.qsize()
-
     @property
     def drivers_inuse(self):
-        with self._lock:
-            return int(self._in_use)
+        return int(self._in_use)
 
     @property
     def max_size(self):
@@ -522,7 +517,7 @@ class DriverPool:
     def can_create_driver(self) -> bool:
         return (
             not self._high_load and
-            self._spawn_budget.can_spawn(self) and
+            self._spawn_budget.get_remaining() > 0 and  
             not self._shutdown
         )
 
@@ -547,7 +542,7 @@ class DriverPool:
                 'auto_mode': self._auto_mode,
                 'shutdown': self._shutdown,
                 'high_load': self._high_load,
-                'spawn_budget_remaining': self._spawn_budget.get_remaining(self),
+                'spawn_budget_remaining': self._spawn_budget.get_remaining(),
                 'can_create_driver': self.can_create_driver()
             }
 

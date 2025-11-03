@@ -20,7 +20,6 @@ class DriverSpawnBudget:
         self.spawn_count = 0
         self.window_start = time.monotonic()
         self.last_spawn_time = 0.0
-        self._last_override_log = 0.0
         self._lock = threading.Lock()
 
     def can_spawn(self, driver_pool=None) -> bool:
@@ -45,14 +44,13 @@ class DriverSpawnBudget:
             # monitor_details.info(f"[CAN_SPAWN] denied high_load={high_load}, spawn_count={self.spawn_count}")
             return False
     
-    def get_remaining(self, driver_pool=None) -> int:
+    def get_remaining(self) -> int:
         with self._lock:
             now = time.monotonic()
             if now - self.window_start > self.window_size_sec:
+                self.spawn_count = 0         
+                self.window_start = now
                 return self.max_per_window
-            
-            if driver_pool and not driver_pool.is_high_load:
-                return 999999
             
             return max(0, self.max_per_window - self.spawn_count)
 
@@ -208,7 +206,7 @@ class MemoryMonitor:
         '_last_check', '_cached_memory_percent', '_cached_cpu_percent', '_last_update_result',
         '_update_in_progress', '_history_memory', '_history_cpu', '_last_cpu_times', '_state_lock',
         '_last_high_load_change', '_spawn_hysteresis_time', '_high_load_state',
-        '_histogram_memory', '_histogram_cpu', '_histogram_bins', '_last_cpu_times_set'
+        '_histogram_memory', '_histogram_cpu', '_histogram_bins', '_history_decay'
     )
     
     def __init__(self):
@@ -217,7 +215,8 @@ class MemoryMonitor:
         self._max_history = pressure.get("history")
         self._memory_threshold = pressure.get("mem_threshold")
         self._cpu_threshold = pressure.get("cpu_threshold")
-        
+        self._history_decay = pressure.get("history_decay", 0.75)
+
         driver_autoscaling = Config.get("resources.driver_autoscaling")
         spawn_buffer = driver_autoscaling.get("spawn_buffer")
         self._spawn_hysteresis_time = spawn_buffer
@@ -228,8 +227,7 @@ class MemoryMonitor:
         self._cached_memory_percent = 0.0
         self._cached_cpu_percent = 0.0
 
-        self._last_cpu_times = _read_cpu_times()
-        self._last_cpu_times_set = False
+        self._last_cpu_times = None
         
         self._history_memory = ThreadSafeList()
         self._history_cpu = ThreadSafeList()
@@ -274,9 +272,8 @@ class MemoryMonitor:
                 memory_percent = _read_memory_percent()
                 curr_cpu = _read_cpu_times()
 
-                if not self._last_cpu_times_set:
+                if self._last_cpu_times is None:
                     cpu_percent = 0.0
-                    self._last_cpu_times_set = True
                 else:
                     cpu_percent = _calculate_cpu_percent(self._last_cpu_times, curr_cpu)
 
@@ -292,9 +289,9 @@ class MemoryMonitor:
                 mem_bin = min(int(memory_percent // bin_width), self._histogram_bins - 1)
                 cpu_bin = min(int(cpu_percent // bin_width), self._histogram_bins - 1)
 
-                decay = 0.9 
-                self._histogram_memory = [int(x * decay) for x in self._histogram_memory]
-                self._histogram_cpu = [int(x * decay) for x in self._histogram_cpu]
+                decay = self._history_decay
+                self._histogram_memory = [max(1, int(x * decay)) for x in self._histogram_memory]
+                self._histogram_cpu = [max(1, int(x * decay)) for x in self._histogram_cpu]
 
                 self._histogram_memory[mem_bin] += 1
                 self._histogram_cpu[cpu_bin] += 1
@@ -363,7 +360,7 @@ class MemoryMonitor:
         if self._needs_update():
             self._update_stats()
         
-        min_samples = 5
+        min_samples = max(5, self._max_history // 2)
         ok = len(self._histogram_cpu) >= min_samples and len(self._histogram_memory) >= min_samples
         if not ok:
             monitor_details.warning("[CHECK_LOAD] Skipping high_load check, not enough samples")
@@ -377,7 +374,7 @@ class MemoryMonitor:
         
         sustained_pressure_threshold = 0.5
         should_block = hist_mem_ratio > sustained_pressure_threshold or hist_cpu_ratio > sustained_pressure_threshold
-        should_unblock = hist_mem_ratio < 0.3 and hist_cpu_ratio < 0.3
+        should_unblock = hist_mem_ratio < 0.3 or hist_cpu_ratio < 0.3
         
         prev_high_load = self._high_load_state
         
@@ -502,15 +499,12 @@ def resource_pressure_monitor(driver_pool, stop_event):
                 avg_mem, avg_cpu, base_buffer_negative, base_buffer_positive
             )
             
-            negative_buffer = negative_buffer or 0
-            positive_buffer = positive_buffer or 0
-
             dynamic_mem_threshold = (mem_pressure_threshold or 85) - negative_buffer
             dynamic_cpu_threshold = (cpu_pressure_threshold or 85) - negative_buffer
             
             mem_release_threshold = (mem_pressure_threshold or 85) - positive_buffer
             cpu_release_threshold = (cpu_pressure_threshold or 85) - positive_buffer
-            
+
             if should_log:
                 monitor_details.info(f"[MONITOR_THREAD] memory > {mem_pressure_threshold or 85}% in {hist_mem_ratio:.1%} of checks")
                 monitor_details.info(f"[MONITOR_THREAD] cpu > {cpu_pressure_threshold or 85}% in {hist_cpu_ratio:.1%} of checks")
@@ -581,9 +575,6 @@ def acquire_driver_with_pressure_check(driver_pool, context="unknown"):
         debug_logger.error(f"[ACQUIRE_DRIVER] driver_pool is None in {context}")
         return None
     
-    memory_monitor = get_memory_monitor()
-    memory_monitor.check_load(driver_pool)
-    
     if driver_pool.is_high_load:
         debug_logger.warning(f"[ACQUIRE_DRIVER] blocked due to system pressure in {context}")
         timed_out = wait_high_load(driver_pool, context=context)
@@ -632,9 +623,7 @@ def wait_high_load(driver_pool: Any, context: str = "unknown", url: Optional[str
             )
             last_block_log = now
 
-        jitter = wait_chunk_time + random.uniform(0.1, 0.3)
-        chunk = min(jitter, remaining_total)
-
+        chunk = min(wait_chunk_time, remaining_total)
         unblocked = driver_pool.wait_for_unblock(timeout=chunk)
         if unblocked:
             break
