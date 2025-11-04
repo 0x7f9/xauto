@@ -55,7 +55,7 @@ from xauto.utils.setup import get_options
 from xauto.internal.geckodriver.driver import get_driver_pool
 from xauto.runtime.task_manager import TaskManager
 
-# initialize configuration you can freeze it also
+# init configuration you can freeze it also
 config = Config()
 config.freeze()
 
@@ -66,8 +66,9 @@ options = get_options()
 driver_pool = get_driver_pool(max_size=10, firefox_options=options)
 
 # define a task for the workers
-def your_task_function(task_data, driver):
-    url = task_data.get('url')
+def your_task_function(task_idx, driver, tasks):
+    task = tasks[task_idx]
+    url = task['url']
     driver.get(url)
     # add your scraping or automation logic here
     return driver.title
@@ -119,9 +120,11 @@ TASKS = [
 ]
 
 # define your task function
-def your_task_function(task_data, driver):
-    url = task_data.get('url')
+def your_task_function(task_idx, driver, tasks):
+    task = tasks[task_idx]
+    url = task['url']
     driver.get(url)
+
     # add your scraping or automation logic here
     return driver.title
 
@@ -130,13 +133,13 @@ task_manager, driver_pool = setup_runtime(
     task_processor=your_task_function
 )
 
-# you can set the runtime up with a empty list,
-# and then add to the existing runtime_state like so
 # from xauto.runtime.lifecycle import runtime_state
-# runtime_state['tasks'].extend(TASKS)
+# add to the runtime_state created in setup_runtime()
+# allowing for tracking of proccessed tasks, etc
+# runtime_state['tasks'].extend(TARGETS_CVE)
 
 # add your tasks to the pool
-task_manager.add_tasks(range(len(TASKS)))
+task_manager.add_tasks(TASKS)
 
 # wait for completion
 task_manager.wait_completion()
