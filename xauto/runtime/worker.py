@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
+from xauto.internal.geckodriver.driver import DriverPool
 from xauto.utils.logging import debug_logger, monitor_details
 from xauto.utils.config import Config
 from xauto.utils.setup import debug
 from xauto.utils.validation import is_connection_error
 from xauto.internal.memory import acquire_driver_with_pressure_check
 
+from typing import Any, Optional
 import time
 import threading
 import traceback
@@ -13,28 +15,28 @@ import queue
 
 class Worker(threading.Thread):
     __slots__ = (
-        'task_queue', 'driver_pool', 'per_task_fn', 'daemon', 
-        'driver', 'name', 'task_count', 'successful_tasks', 'failed_tasks',
-        '_start_time', '_total_task_time', '_last_log_time', 'log_interval', 
-        '_exit_reason', '_stats_lock', '_circuit_breaker_failures', 
-        '_circuit_breaker_last_failure', '_circuit_breaker_threshold', '_max_task_retries',
-        'manager'
+        'task_queue', 'driver_pool', 'driver', 'name', 'task_count', 
+        'successful_tasks', 'failed_tasks', '_start_time', '_total_task_time', 
+        '_last_log_time', 'log_interval', '_exit_reason', '_stats_lock', 
+        '_circuit_breaker_failures', '_circuit_breaker_last_failure', 
+        '_circuit_breaker_threshold', '_max_task_retries', 'manager'
     )
     
-    def __init__(self, task_queue, driver_pool, per_task_fn, name=None, manager=None, *args, **kwargs):
-        try:
-            kwargs.pop('name', None)
-            super().__init__(name=name, *args, **kwargs)
-        except Exception as e:
-            debug_logger.error(f"Worker constructor error: {e}. args={args}, kwargs={kwargs}", exc_info=True)
-            raise
+    def __init__(
+            self, 
+            task_queue, 
+            driver_pool: DriverPool, 
+            name: Optional[str] = None, 
+            manager: Optional[Any] = None
+    ):
+        super().__init__(name=name, daemon=True)
         
         self.task_queue = task_queue
         self.driver_pool = driver_pool
-        self.per_task_fn = per_task_fn
-        self.daemon = True
-        self.driver = None
         self.name = name or f"Worker-{id(self)}"
+        self.manager = manager
+        self.driver = None
+
         self.task_count = 0
         self.successful_tasks = 0
         self.failed_tasks = 0
@@ -48,19 +50,21 @@ class Worker(threading.Thread):
         self._exit_reason = "normal"
         self._max_task_retries = Config.get("misc.timeouts.max_task_retries")
         self._start_time = time.monotonic()
-        self.manager = manager
     
     def run(self):
-        fn = self.per_task_fn
+        if not self.manager:
+            return
+        
+        processor = self.manager.task_processor
 
         while True:
             try:
-                task = self.task_queue.get(timeout=0.5)
+                task_wrapper = self.task_queue.get(timeout=0.5)
             except queue.Empty:
                 time.sleep(1)
                 continue
-            
-            if task is None:
+
+            if task_wrapper is None:
                 debug_logger.info(f"{self.name}: Exiting worker, got stop().")
                 self.task_queue.task_done()
                 self.return_driver()
@@ -71,16 +75,16 @@ class Worker(threading.Thread):
                     # worker will block inside here waiting for a driver if under high load
                     self.driver = acquire_driver_with_pressure_check(self.driver_pool, context=self.name)
 
-                fn(task.task, self.driver)
+                processor(task_wrapper.idx, self.driver, task_wrapper.tasks)
 
                 self._should_destroy_driver_for_pressure()
               
             except Exception as e:
                 self._handle_driver_failure(e)
                 
-                task.retry_count += 1
-                if task.retry_count <= self._max_task_retries:
-                    self.task_queue.put(task)
+                task_wrapper.retry_count += 1
+                if task_wrapper.retry_count <= self._max_task_retries:
+                    self.task_queue.put(task_wrapper)
             finally:
                 self.task_queue.task_done()
 

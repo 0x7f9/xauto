@@ -24,9 +24,12 @@ class TaskManager:
         '_workers_lock'
     )
     
-    def __init__(self, driver_pool: DriverPool, task_processor: Callable, 
-                 max_workers: Optional[int] = None, task_queue: Optional[queue.Queue] = None,
-                 tasks: Optional[list] = None):
+    def __init__(
+            self, 
+            driver_pool: DriverPool, 
+            task_processor: Callable, 
+            max_workers: Optional[int] = None, 
+    ):
         
         if max_workers is None:
             debug_logger.warning("No worker limit set in TaskManager")
@@ -34,9 +37,8 @@ class TaskManager:
         
         self.driver_pool = driver_pool
         self.task_processor = task_processor
-        self.task_queue = task_queue or queue.Queue()
-        self.tasks = tasks
         self.max_workers = max_workers
+        self.task_queue = queue.Queue()
         self.worker_timeout = Config.get("misc.timeouts.worker")
         self.monitor_interval = Config.get("misc.thread_monitoring.interval_sec")
         autoscaling = Config.get("resources.driver_autoscaling", {})
@@ -61,24 +63,21 @@ class TaskManager:
         return Worker(
             task_queue=self.task_queue,
             driver_pool=self.driver_pool,
-            per_task_fn=self._task_wrapper,
             manager=self,
             name=name
         )
     
-    def add_task(self, task: Any) -> None:
-        self.task_queue.put(TaskWrapper(task))
+    def add_task(self, idx: int, task: list) -> None:
+        if not task:
+            return
+        self.task_queue.put(TaskWrapper(idx=idx, tasks=task))
         self._tasks_added += 1
-    
-    def add_tasks(self, tasks: Iterable[Any]) -> None:
+
+    def add_tasks(self, tasks: list) -> None:
         if not tasks:
             return
-        
-        task_count = 0
-        for task in tasks:
-            self.task_queue.put(TaskWrapper(task))
-            task_count += 1
-        self._tasks_added += task_count
+        for idx, _ in enumerate(tasks):
+            self.add_task(idx, tasks)
     
     def start(self, initial_workers: Optional[int] = None) -> None:
         if len(self.workers) > 0:
@@ -110,12 +109,6 @@ class TaskManager:
 
         time.sleep(0.1)
 
-    def _task_wrapper(self, task: Any, driver: Any) -> None:
-        if self.tasks is not None:
-            self.task_processor(task, driver, self.tasks)
-        else:
-            self.task_processor(task, driver)
-    
     def _monitor_workers(self) -> None:
         while not self.stop_event.is_set():
             if self.stop_event.wait(timeout=self.monitor_interval):
@@ -238,20 +231,8 @@ class TaskManager:
         debug_logger.info(f"Worker shutdown completed in {elapsed:.2f}s")
         self._shutdown_complete.set()
     
-    def wait_completion(self, timeout: Optional[float] = None) -> bool:
+    def wait_completion(self) -> bool:
         self.task_queue.join()
-        return True
-    
-    def wait_for_workers_to_finish(self, timeout: Optional[float] = None) -> bool:
-        if timeout is None:
-            timeout = 30.0
-        start_time = time.perf_counter()
-        self.task_queue.join()
-        remaining_timeout = timeout - (time.perf_counter() - start_time)
-        if remaining_timeout <= 0:
-            return False
-        for worker in self.workers:
-            worker.join(timeout=remaining_timeout)
         return True
     
     def shutdown(self, wait: bool = True, timeout: Optional[float] = None) -> bool:
@@ -267,11 +248,6 @@ class TaskManager:
             self.monitor_thread.join(self.worker_timeout)
             
         return True
-    
-    def reset_for_new_file(self) -> None:
-        self.task_queue.join()
-        # after join() returns, the queue is empty and workers are idle,
-        # ready for the next add_tasks()
     
     def is_ready_for_new_tasks(self) -> bool:
         return self.task_queue.empty()

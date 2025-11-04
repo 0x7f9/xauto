@@ -61,7 +61,7 @@ def get_worker_limits() -> Tuple[Union[int, float], int]:
     debug_logger.info(f"Driver pool configured with driver_limit = {driver_limit}")
     return limit, limit
 
-def setup_runtime(task_processor: Callable, tasks: Optional[list] = None) -> Tuple[TaskManager, Any]:
+def setup_runtime(task_processor: Callable) -> Tuple[TaskManager, Any]:
     options = get_options()
     driver_pool_max_size, max_workers = get_worker_limits()
     
@@ -76,7 +76,6 @@ def setup_runtime(task_processor: Callable, tasks: Optional[list] = None) -> Tup
         driver_pool=driver_pool,
         task_processor=task_processor,
         max_workers=max_workers,
-        tasks=tasks
     )
     task_manager.start()
     
@@ -87,7 +86,7 @@ def setup_runtime(task_processor: Callable, tasks: Optional[list] = None) -> Tup
         'failed': AtomicCounter(),
         'invalid': AtomicCounter()
     }
-    runtime_state['tasks'] = tasks
+    runtime_state['tasks'] = []
     
     start_thread_if_needed(
         'resource_thread',

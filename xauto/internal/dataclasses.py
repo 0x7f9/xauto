@@ -1,4 +1,7 @@
 import time
+from dataclasses import dataclass
+from typing import Optional
+from selenium.webdriver.remote.webelement import WebElement
 
 class ResourceStats:
     __slots__ = ('memory', 'cpu')
@@ -9,11 +12,12 @@ class ResourceStats:
 
 
 class TaskWrapper:
-    __slots__ = ('task', 'retry_count')
+    __slots__ = ('idx', 'retry_count', 'tasks')
     
-    def __init__(self, task: int):
-        self.task = task
+    def __init__(self, idx: int, tasks: Optional[list] = None):
+        self.idx = idx
         self.retry_count = 0
+        self.tasks = tasks 
 
 
 class DriverInfo:
@@ -24,5 +28,5 @@ class DriverInfo:
         self.last_access = time.monotonic()
         self.heap_timestamp = self.last_access
         self.failure_count = 0
-        
+
         
