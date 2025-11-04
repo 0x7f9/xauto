@@ -11,7 +11,7 @@ if not bootstrap():
     sys.exit(1)
     
 from xauto.utils.config import Config
-from xauto.runtime.lifecycle import setup_runtime, teardown_runtime
+from xauto.runtime.lifecycle import setup_runtime, teardown_runtime, runtime_state
 from xauto.utils.page_loading import wait_for_page_load
 from xauto.utils.validation import is_bot_page
 from xauto.utils.utility import counter
@@ -54,24 +54,16 @@ def scrape(current_task, driver, tasks):
     finally:
         counter("completed")
 
-task_manager, driver_pool = setup_runtime(task_processor=scrape, tasks=TARGETS_CVE)
-task_manager.add_tasks(range(len(TARGETS_CVE)))
+task_manager, driver_pool = setup_runtime(task_processor=scrape)
+task_manager.add_tasks(TARGETS_CVE)
 
-# you can set the runtime up with a empty list,
-# then add to the existing runtime_state and manager
-# this can also be used to update the runtime
-# with new tasks without restarting the current session
-# task_manager, driver_pool = setup_runtime(
-#     task_processor=scrape,
-#     tasks=[]
-# )  
-# runtime_state['tasks'].extend(TARGETS_CVE)
-# task_manager.tasks = TARGETS_CVE
+# add to the runtime_state created in setup_runtime()
+runtime_state['tasks'].extend(TARGETS_CVE)
 
 task_manager.wait_completion()
+
 teardown_runtime(task_manager, driver_pool)
 
-from xauto.runtime.lifecycle import runtime_state
 start_time = runtime_state['start_time']
 tasks = runtime_state['tasks']
 outcomes = runtime_state['outcomes']
