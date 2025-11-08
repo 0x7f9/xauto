@@ -67,9 +67,10 @@ driver = acquire_driver_with_pressure_check(driver_pool, context="unknown")
 driver.get()
 
 from xauto.internal.memory import wait_high_load
-# blocks the threads runtime preventing url navigation or DOM traverals
-forced = wait_high_load(pool, context="validation.navigate", url=url)
-driver._forced_navigation = forced
+# blocks the threads runtime preventing work under high load 
+forced_unblock = wait_high_load(pool, context="url_navigation", allow_timeout=True)
+if forced_unblock:
+  print("Unblocked due to max_wait_time")
 ```
 
 ### Browser Validation Checks
@@ -152,6 +153,9 @@ counter = AtomicCounter()
 safe_list.append(item)
 safe_dict[key] = value
 counter.increment()
+counter.decrement()
+counter.reset()
+counter.get()
 
 from xauto.internal.thread_safe import SafeThread
 thread = SafeThread(
@@ -216,17 +220,32 @@ resources:
       cpu_threshold: 80.0
 ```
 
-### Timeouts
+### Misc 
 ```yaml
 misc:
+  logging:
+    log_timer_interval: 5
+
+  thread_monitoring:
+    worker_monitor_loop_interval: 1
+
   timeouts:
-    body_load: 10
-    url_loading: 5
-    max_task_retries: 2
-    shutdown: 10
-    worker: 5
-    circuit_breaker_window: 30
-    circuit_breaker_max_delay: 60
+    # shutdown timeouts 
+    program_shutdown_timeout: 10
+    stop_all_workers_timeout: 10
+    stop_worker_timeout: 5
+
+    # function retries
+    max_send_key_retries: 2
+    max_worker_task_retries: 2
+
+   # loading timeouts
+    max_body_load_wait: 10
+    max_url_load_wait: 5
+
+    # driver timeouts
+    driver_recreate_delay: 5
+    driver_slot_wait_delay: 3
 ```
 
 ### Proxy Configuration
