@@ -65,7 +65,7 @@ def runtime_status(start_time=None, tasks=None, outcomes=None, driver_pool=None)
             inuse = driver_pool.drivers_inuse
             pool_max = driver_pool.max_size
 
-        logline = f"[STAT]{runtime:5.1f}s | Tasks {int(outcomes['completed'])}/{task_count}"
+        logline = f"[STAT]{runtime:5.1f}s | Tasks {outcomes['completed'].get()}/{task_count}"
 
         if inuse > 0:
             logline += f" | Drivers {inuse}/{pool_max}"

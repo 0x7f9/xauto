@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from xauto.utils.config import Config
 from xauto.utils.logging import debug_logger
 
 from selenium.common.exceptions import WebDriverException
@@ -9,6 +10,7 @@ from contextlib import contextmanager
 import functools
 import os
 import mmap
+import time
 
 @contextmanager
 def iframe_context(
@@ -25,6 +27,8 @@ def iframe_context(
 
 def check_driver_liveness(driver: WebDriver) -> bool:
     try:
+        if driver is None:
+            return
         driver.execute_script("return 1")
         return True
     except WebDriverException as e:
@@ -105,6 +109,18 @@ def counter(name):
         return
     counter = outcomes.get(name)
     if counter:
-        counter += 1
+        counter.increment()
 
-        
+
+class LogTimer:
+    def __init__(self, interval: Optional[float] = None):
+        self.interval = interval or Config.get("misc.logging.log_timer_interval")
+        self._last = 0
+
+    def should_log(self) -> bool:
+        now = time.monotonic()
+        if now - self._last >= self.interval:
+            self._last = now
+            return True
+        return False
+ 

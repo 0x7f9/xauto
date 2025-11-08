@@ -35,11 +35,4 @@ def shutdown_component_with_timeout(
     except Exception as e:
         debug_logger.error(f"Error during {name}.{shutdown_method}(): {e}", exc_info=debug)
 
-    if hasattr(component, "close_all"):
-        debug_logger.info(f"{name}: calling close_all() to ensure full cleanup")
-        try:
-            component.close_all()
-        except Exception as e:
-            debug_logger.error(f"{name}.close_all() error: {e}", exc_info=debug)
-
     debug_logger.info(f"{name} closed") 

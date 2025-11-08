@@ -2,8 +2,7 @@ from xauto.utils.setup import get_random_user_agent
 from xauto.utils.config import Config
 from xauto.utils.logging import monitor_details, debug_logger
 from xauto.utils.injection import wrap_driver_with_injection
-from xauto.internal.memory import DriverSpawnBudget
-from xauto.internal.thread_safe import AtomicCounter
+from xauto.internal.thread_safe import AtomicCounter, ThreadSafeDict
 from xauto.internal.dataclasses import DriverInfo
 
 import os
@@ -37,19 +36,62 @@ def get_driver_pool(
     return _driver_pool
 
 
+class DriverRateLimiter:
+    def __init__(self, max_per_window: int = 10, window_size_sec: int = 60):
+        self.max_per_window = max_per_window
+        self.window_size_sec = window_size_sec
+        self.spawn_count = 0
+        self.window_start = time.monotonic()
+        self._lock = threading.Lock()
+
+    def try_acquire_slot(self, driver_pool=None) -> bool:
+        with self._lock:
+            now = time.monotonic()
+            if now - self.window_start > self.window_size_sec:
+                self.spawn_count = 0
+                self.window_start = now
+
+            if not driver_pool:
+                return False
+
+            if driver_pool.drivers_inuse >= driver_pool.max_size:
+                monitor_details.info(f"[ACQUIRE_SLOT] denied driver pool full")
+                return False
+
+            if self.spawn_count >= self.max_per_window:
+                # monitor_details.info(
+                #     f"[ACQUIRE_SLOT] denied: driver spawn "
+                #     f"budget exhausted ({self.spawn_count})"
+                # )
+                return False
+
+            self.spawn_count += 1
+            monitor_details.info(
+                f"[ACQUIRE_SLOT] allowed driver spawn_count={self.spawn_count}"
+            )
+            return True
+    
+    def get_remaining_slots(self) -> int:
+        with self._lock:
+            now = time.monotonic()
+            if now - self.window_start > self.window_size_sec:
+                self.spawn_count = 0         
+                self.window_start = now
+                return self.max_per_window
+            return max(0, self.max_per_window - self.spawn_count)
+        
+
 class DriverPool:
     __slots__ = (
         '_lock', '_auto_mode', '_max_size', '_pool', '_drv_path', '_options', 
         '_created', '_errors', '_info', '_driver_objects', '_termination_failures', 
         'proxy_enabled', 'proxies', '_proxy_index', 'no_ssl_verify', 'use_auth', '_in_use', 
-        'username', 'password', 'socks5', 'dns_resolver', '_logger', '_shutdown',
-        '_seleniumwire_webdriver', '_pressure_lock', '_high_load', '_spawn_budget',
-        '_last_scale_down_time', '_consecutive_high_load_count', 
+        'username', 'password', 'socks5', 'dns_resolver', '_shutdown', 'high_load_count', 
+        '_seleniumwire_webdriver', '_pressure_lock', '_high_load', '_rate_limiter',
+        '_near_threshold'
     )
     
     def __init__(self, max_size, firefox_options):
-        self._lock = threading.Condition()
-        self._pressure_lock = threading.Lock()
         self._auto_mode = (isinstance(max_size, str) and max_size.lower() == "auto") or max_size == float('inf')
         if self._auto_mode:
             self._max_size = float('inf')
@@ -58,26 +100,28 @@ class DriverPool:
             self._max_size = int(max_size)
             queue_maxsize = self._max_size
         
+        self._lock = threading.Condition()
+        self._pressure_lock = threading.Lock()
         self._pool = queue.Queue(maxsize=queue_maxsize)
         self._drv_path = os.path.join(os.path.dirname(__file__), 'geckodriver')
         
         self._options = firefox_options
-        self._info = {}
-        self._driver_objects = {}
+        self._info = ThreadSafeDict()
+        self._driver_objects = ThreadSafeDict()
         self._in_use = AtomicCounter()
         self._created = AtomicCounter()
         self._errors = AtomicCounter()
         self._termination_failures = AtomicCounter()
         
         self._shutdown = False
-        self._last_scale_down_time = 0.0
-        self._consecutive_high_load_count = 0
+        self.high_load_count = AtomicCounter()
         self._high_load = False
+        self._near_threshold = False
         
         driver_spawning = Config.get("resources.driver_spawning")
         spawn_window_sec = driver_spawning.get("spawn_window_sec")
         max_spawns_per_window = driver_spawning.get("max_spawns_per_window")
-        self._spawn_budget = DriverSpawnBudget(max_spawns_per_window, spawn_window_sec)
+        self._rate_limiter = DriverRateLimiter(max_spawns_per_window, spawn_window_sec)
         
         proxy_settings = Config.get("proxy")
         self.proxy_enabled = False
@@ -179,7 +223,7 @@ class DriverPool:
             else:
                 drv = webdriver.Firefox(service=service, options=driver_opts)
         except Exception as e:
-            self._errors += 1
+            self._errors.increment()
             from xauto.utils.setup import debug
             debug_logger.error(f"[DRIVER_CREATE] {e}", exc_info=debug)
             return None
@@ -192,11 +236,10 @@ class DriverPool:
             from xauto.utils.setup import debug
             debug_logger.error(f"[DRIVER_CREATE] getting PID {e}", exc_info=debug)
 
-        with self._lock:
-            self._info[id(drv)] = DriverInfo(pids)
-            self._driver_objects[id(drv)] = drv
-            self._created += 1
-            self._info[id(drv)].last_access = time.monotonic()
+        self._info[id(drv)] = DriverInfo(pids)
+        self._driver_objects[id(drv)] = drv
+        self._created.increment()
+        self._info[id(drv)].last_access = time.monotonic()
 
         setattr(drv, "_driver_pool", self)
         return drv
@@ -228,14 +271,26 @@ class DriverPool:
                     self._lock.wait()
             return True
 
-    def set_high_load(self, blocked: bool):
+    def set_near_threshold(self, state: bool):
+        with self._lock:
+            prev = self._near_threshold
+            self._near_threshold = state
+            if prev != state:
+                monitor_details.info(f"[DRIVER_POOL] near_threshold: {prev} -> {state}")
+
+    def set_high_load(self, state: bool):
         with self._lock:
             prev = self._high_load
-            if prev == blocked:
+            self._high_load = state
+            if prev == state:
                 return
-            self._high_load = blocked
-            if not blocked:
-                self._lock.notify_all()
+            monitor_details.info(f"[DRIVER_POOL] high_load: {prev} -> {state}")
+            self._lock.notify_all()
+
+    @property
+    def is_near_threshold(self):
+        with self._lock:
+            return self._near_threshold
 
     @property
     def is_high_load(self):
@@ -260,26 +315,25 @@ class DriverPool:
         try:
             drv = self._pool.get(timeout=timeout)
         except queue.Empty:
-            if self._max_size == float('inf') or int(self._created) < self._max_size:
+            if self._max_size == float('inf') or self._created.get() < self._max_size:
                 
-                while not self._spawn_budget.can_spawn(self):
-                    time.sleep(Config.get("misc.timeouts.spawn_wait_delay"))
+                while not self._rate_limiter.try_acquire_slot(self):
+                    time.sleep(Config.get("misc.timeouts.driver_slot_wait_delay"))
                 
                 if not skip_high_load_wait:
                     # this is useful if you are calling get_driver() on its own
                     # without going through acquire_driver_with_pressure_check()
                     from xauto.internal.memory import wait_high_load
-                    wait_high_load(self, context="driver_pool.get_driver")
+                    wait_high_load(self, context="driver_pool.get_driver", allow_timeout=False)
                 
                 drv = self._create_driver_with_retries()
             else:
                 drv = self._pool.get(timeout=timeout)
 
-        with self._lock:
-            info = self._info.get(id(drv))
-            if info:
-                info.last_access = time.monotonic()
-            self._in_use += 1
+        info = self._info.get(id(drv))
+        if info:
+            info.last_access = time.monotonic()
+        self._in_use.increment()
         
         stats = self._get_minimal_pool_stats()
         monitor_details.info(
@@ -292,11 +346,10 @@ class DriverPool:
         if drv is None:
             return
 
-        with self._lock:
-            info = self._info.get(id(drv))
-            if info:
-                info.last_access = 0
-            self._in_use -= 1
+        info = self._info.get(id(drv))
+        if info:
+            info.last_access = 0
+        self._in_use.decrement()
 
         try:
             self._pool.put_nowait(drv)
@@ -309,26 +362,19 @@ class DriverPool:
         if driver is None:
             return
 
-        with self._lock:
-            info = self._info.get(id(driver))
-            if info:
-                info.failure_count += 1
-            self._errors += 1
+        info = self._info.get(id(driver))
+        if info:
+            info.failure_count += 1
+        self._errors.increment()
 
     def has_recent_failures(self):
-        with self._lock:
-            return any(info.failure_count > 0 for info in self._info.values())
+        return any(info.failure_count > 0 for info in self._info.values())
 
     def set_consecutive_high_load(self, is_high_load):
-        with self._pressure_lock:
-            if is_high_load:
-                self._consecutive_high_load_count += 1
-            else:
-                self._consecutive_high_load_count = 0
-
-    def requires_consecutive_high_load(self, required_count=2):
-        with self._pressure_lock:
-            return self._consecutive_high_load_count >= required_count
+        if is_high_load:
+            self.high_load_count.increment()
+        else:
+            self.high_load_count.reset()
 
     def _destroy(self, drv):
         if drv is None:
@@ -343,15 +389,14 @@ class DriverPool:
         )
 
         try:
-            with self._lock:
-                info = self._info.get(driver_id)
-                if info:
-                    pids = info.pids
-                else:
-                    pids = []
-                self._info.pop(driver_id, None)
-                self._driver_objects.pop(driver_id, None)
-                self._in_use -= 1
+            info = self._info.get(driver_id)
+            if info:
+                pids = info.pids
+            else:
+                pids = []
+            self._info.pop(driver_id, None)
+            self._driver_objects.pop(driver_id, None)
+            self._in_use.decrement()
 
             try:
                 drv.quit()
@@ -376,7 +421,7 @@ class DriverPool:
                     debug_logger.error(f"[DRIVER_DESTROY] process error: driver_id={driver_id}, pid={pid}, error={e}")
 
         except Exception as e:
-            self._termination_failures += 1
+            self._termination_failures.increment()
             debug_logger.error(f"[DRIVER_DESTROY] {driver_id} {e}")
 
         stats = self._get_minimal_pool_stats()
@@ -400,8 +445,7 @@ class DriverPool:
             except queue.Empty:
                 break
         
-        with self._lock:
-            drivers_to_destroy = list(self._driver_objects.items())
+        drivers_to_destroy = self._driver_objects.items()
         
         for drv_id, driver in drivers_to_destroy:
             try:
@@ -417,12 +461,11 @@ class DriverPool:
         current_time = time.monotonic()
         drivers_to_remove = []
 
-        with self._lock:
-            for driver_id, info in list(self._info.items()):
-                if info.last_access > 0:
-                    continue 
-                if current_time - info.last_access > max_idle_time:
-                    drivers_to_remove.append(driver_id)
+        for driver_id, info in self._info.items():
+            if info.last_access > 0:
+                continue 
+            if current_time - info.last_access > max_idle_time:
+                drivers_to_remove.append(driver_id)
 
         if not drivers_to_remove:
             return
@@ -451,7 +494,7 @@ class DriverPool:
 
     @property
     def drivers_inuse(self):
-        return int(self._in_use)
+        return self._in_use.get()
 
     @property
     def max_size(self):
@@ -461,45 +504,40 @@ class DriverPool:
     #     if self._shutdown:
     #         return False
             
-    #     with self._lock:
-    #         current_size = self._pool.qsize()
-    #         if current_size == 0:
-    #             return False
-            
-    #         drivers_to_remove = min(count, current_size)
-            
-    #         for _ in range(drivers_to_remove):
-    #             try:
-    #                 drv = self._pool.get_nowait()
-    #                 if drv is not None:
-    #                     self._destroy(drv)
-    #             except queue.Empty:
-    #                 break
-            
-    #         return True
+    #     current_size = self._pool.qsize()
+    #     if current_size == 0:
+    #         return False
+        
+    #     drivers_to_remove = min(count, current_size)
+        
+    #     for _ in range(drivers_to_remove):
+    #         try:
+    #             drv = self._pool.get_nowait()
+    #             if drv is not None:
+    #                 self._destroy(drv)
+    #         except queue.Empty:
+    #             break
+        
+    #     return True
 
     def mark_driver_bad(self, driver):
         if driver is not None:
             self.mark_driver_failed(driver)
 
-    def should_close_driver_for_pressure(self, cooldown_seconds=None):
-        from xauto.utils.config import Config
-        cooldown = cooldown_seconds or Config.get("resources.driver_autoscaling.scale_down_cooldown", 5.0)
-            
+    def should_close_driver_for_pressure(self):
         with self._pressure_lock:
-            now = time.monotonic()
-            
             if self.has_recent_failures():
                 return False
             
-            if now - self._last_scale_down_time < cooldown:
+            count = self.high_load_count.get()
+            if count < 2:
                 return False
             
-            return self._consecutive_high_load_count >= 2
+            monitor_details.info(
+                f"[SHOULD_CLOSE] YES: high_load={self.is_high_load}, consecutive={count} "
+            )
 
-    def mark_driver_closed_for_pressure(self):
-        with self._pressure_lock:
-            self._last_scale_down_time = time.monotonic()
+            return True
 
     def shutdown(self, wait=True, timeout=None):
         global _driver_pool
@@ -515,18 +553,23 @@ class DriverPool:
         return True
 
     def can_create_driver(self) -> bool:
-        return (
-            not self._high_load and
-            self._spawn_budget.get_remaining() > 0 and  
-            not self._shutdown
-        )
+        if self._shutdown:
+            return False
+        if self.is_high_load:
+            return False
+        if self.is_near_threshold:
+            return False
+        if self._rate_limiter.get_remaining_slots() <= 0:
+            return False
+
+        return True
 
     def _get_minimal_pool_stats(self):
         return {
             "pool_size": self._pool.qsize(),
-            "created": int(self._created),
-            "in_use": int(self._in_use),
-            "errors": int(self._errors),
+            "created": self._created.get(),
+            "in_use": self._in_use.get(),
+            "errors": self._errors.get(),
             "max_size": self._max_size if self._max_size != float('inf') else "inf",
         }
     
@@ -534,15 +577,15 @@ class DriverPool:
         with self._lock:
             return {
                 'pool_size': self._pool.qsize(),
-                'created': int(self._created),
-                'in_use': int(self._in_use),
-                'errors': int(self._errors),
-                'termination_failures': int(self._termination_failures),
+                'created': self._created.get(),
+                'in_use': self._in_use.get(),
+                'errors': self._errors.get(),
+                'termination_failures': self._termination_failures.get(),
                 'max_size': self._max_size if self._max_size != float('inf') else 'inf',
                 'auto_mode': self._auto_mode,
                 'shutdown': self._shutdown,
                 'high_load': self._high_load,
-                'spawn_budget_remaining': self._spawn_budget.get_remaining(),
+                'spawn_budget_remaining': self._rate_limiter.get_remaining_slots(),
                 'can_create_driver': self.can_create_driver()
             }
 

@@ -3,11 +3,11 @@
 from xauto.utils.logging import debug_logger, monitor_details
 from xauto.utils.config import Config
 from xauto.runtime.task_manager import TaskManager, SafeThread
-from xauto.utils.setup import get_options, debug
+from xauto.utils.setup import get_options
 from xauto.utils.common import status_monitor
 from xauto.runtime.shutdown_helpers import shutdown_component_with_timeout
 from xauto.internal.geckodriver.driver import get_driver_pool
-from xauto.internal.memory import resource_pressure_monitor, cleanup_memory_monitor
+from xauto.internal.memory import pressure_monitor_loop, cleanup_memory_monitor
 from xauto.internal.thread_safe import AtomicCounter, ThreadSafeDict
 
 from typing import Callable, Optional, Any, Tuple, Union
@@ -90,7 +90,7 @@ def setup_runtime(task_processor: Callable) -> Tuple[TaskManager, Any]:
     
     start_thread_if_needed(
         'resource_thread',
-        resource_pressure_monitor,
+        pressure_monitor_loop,
         driver_pool=driver_pool, 
         stop_event=stop
     )
@@ -105,7 +105,7 @@ def setup_runtime(task_processor: Callable) -> Tuple[TaskManager, Any]:
     return task_manager, driver_pool
 
 def teardown_runtime(task_manager: Optional[TaskManager], driver_pool: Optional[Any]) -> None:
-    shutdown_timeout = Config.get("misc.timeouts.shutdown")
+    shutdown_timeout = Config.get("misc.timeouts.program_shutdown_timeout")
     
     debug_logger.info(f"Starting runtime teardown (timeout: {shutdown_timeout}s)")
     
@@ -141,8 +141,7 @@ def teardown_runtime(task_manager: Optional[TaskManager], driver_pool: Optional[
 
     shutdown_component_with_timeout(driver_pool, "driver pool", shutdown_timeout, "shutdown")
     
-    if debug:
-        cleanup_memory_monitor()
+    cleanup_memory_monitor()
     
     _thread_state.clear()
     debug_logger.info("Runtime teardown completed")

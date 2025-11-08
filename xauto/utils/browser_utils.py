@@ -74,7 +74,7 @@ def send_key(
     iframe: Optional[WebElement] = None,
     clear_field: bool = True
 ) -> bool:
-    retries = Config.get("misc.timeouts.max_task_retries")
+    retries = Config.get("misc.timeouts.max_send_key_retries")
 
     for attempt in range(retries):
         try:
@@ -101,8 +101,8 @@ def send_key(
             # use your method of finding elements on the page
 
             time.sleep(
-                Config.get("misc.timeouts.task_retry_base") +
-                random.uniform(0, Config.get("misc.timeouts.task_retry_jitter"))
+                Config.get("misc.timeouts.send_key_retry_base") +
+                random.uniform(0, Config.get("misc.timeouts.send_key_retry_jitter"))
             )
 
         except Exception as e:

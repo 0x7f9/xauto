@@ -3,7 +3,7 @@
 from xauto.runtime.worker import Worker
 from xauto.internal.dataclasses import TaskWrapper
 from xauto.internal.geckodriver.driver import DriverPool
-from xauto.internal.thread_safe import ThreadSafeList, SafeThread
+from xauto.internal.thread_safe import AtomicCounter, ThreadSafeList, SafeThread
 from xauto.utils.logging import debug_logger, monitor_details
 from xauto.utils.config import Config
 from xauto.utils.setup import debug
@@ -36,22 +36,21 @@ class TaskManager:
         self.task_processor = task_processor
         self.max_workers = max_workers
 
-        self._monitor_interval = Config.get("misc.thread_monitoring.interval_sec")
-        self.worker_timeout = Config.get("misc.timeouts.worker")
+        self._monitor_interval = Config.get("misc.thread_monitoring.worker_monitor_loop_interval")
+        self.worker_timeout = Config.get("misc.timeouts.stop_worker_timeout")
         
-        autoscaling = Config.get("resources.driver_autoscaling", {})
-        self.step_up = autoscaling.get("step_up", 2)
-        self.step_down = autoscaling.get("step_down", 1)
-        self.scale_down_cooldown = autoscaling.get("scale_down_cooldown", 5.0)
+        autoscaling = Config.get("resources.driver_autoscaling")
+        self.step_up = autoscaling.get("step_up")
+        self.step_down = autoscaling.get("step_down")
+        self.scale_down_cooldown = autoscaling.get("scale_down_cooldown")
 
-        self.scale_downs_this_cycle = 0
+        self._stats_lock = threading.Lock()
+        self.scale_downs_this_cycle = AtomicCounter()
         self.last_scale_down_time = 0.0
 
         self.task_queue = queue.Queue()
         self._workers = ThreadSafeList()
-        self._workers_lock = threading.Lock()
         self._stop_event = threading.Event()
-        self._stats_lock = threading.Lock()
         self._tasks_added = 0
         self.monitor_thread = None
 
@@ -126,8 +125,7 @@ class TaskManager:
         base = len(self._workers)
         for i in range(n):
             w = self._create_worker(f"Worker-{base + i}")
-            with self._workers_lock:
-                self._workers.append(w)
+            self._workers.append(w)
             w.start()
         time.sleep(0.1)
 
@@ -149,28 +147,27 @@ class TaskManager:
         alive = []
         dead = 0
 
-        with self._workers_lock:
-            for w in self._workers:
-                if w.is_alive():
-                    alive.append(w)
-                    continue 
+        for w in self._workers:
+            if w.is_alive():
+                alive.append(w)
+                continue 
 
-                age = now - w._start_time
-                if age > 2.0:
-                    dead += 1
-                    debug_logger.warning(
-                        f"Worker {w.name} died after {age:.1f}s "
-                        f"exit_reason: {w._exit_reason}, scheduling replacement"
-                    )
-                else:
-                    debug_logger.warning(
-                        f"Worker {w.name} died during startup "
-                        f"(age: {age:.1f}s)"
-                    )
+            age = now - w._start_time
+            if age > 2.0:
+                dead += 1
+                debug_logger.warning(
+                    f"Worker {w.name} died after {age:.1f}s "
+                    f"exit_reason: {w._exit_reason}, scheduling replacement"
+                )
+            else:
+                debug_logger.warning(
+                    f"Worker {w.name} died during startup "
+                    f"(age: {age:.1f}s)"
+                )
 
-            self._workers.clear()
-            for w in alive:
-                self._workers.append(w)
+        self._workers.clear()
+        for w in alive:
+            self._workers.append(w)
 
         if dead > 0:
             try:
@@ -186,32 +183,29 @@ class TaskManager:
         if self.task_queue.empty():
             return
 
-        max_new_workers = self.driver_pool.drivers_inuse + (1 if self.driver_pool.can_create_driver() else 0)
-        if max_new_workers <= 0:
-            monitor_details.debug("[SCALE_UP] blocked: no drivers available or creatable")
+        if not self.driver_pool.can_create_driver():
+            # monitor_details.debug("[SCALE_UP] blocked: cannot create new driver (high_load or budget)")
             return
-        
+    
         add = min(self.step_up, self.max_workers - len(self._workers))
         if add <= 0:
             return
         
         monitor_details.info(
-            f"[SCALE_UP] current={len(self._workers)}, "
+            f"[SCALE_UP] current_workers={len(self._workers)}, "
             f"drivers_inuse={self.driver_pool.drivers_inuse}, try adding={add}"
         )
         self._spawn_workers(add)
 
-        # new_count = len(self._workers)
-        # monitor_details.info(
-        #     f"[SCALE_UP] new workers={new_count}, drivers_active={self.driver_pool.drivers_inuse}"
-        # )
-    
     def _maybe_scale_down(self) -> None:
         # will only scale down idle workers that are not 
         # holding a ._current_task flag given from Worker.run()
         if self.task_queue.qsize() > 0:
             return
         
+        if self.driver_pool:
+            self.driver_pool.cleanup_idle_drivers()
+            
         idle_workers = [
             w for w in self._workers
             if w.is_alive() and w._current_task is None
@@ -225,25 +219,25 @@ class TaskManager:
             f"[SCALE_DOWN] current={len(self._workers)}, "
             f"drivers_inuse={self.driver_pool.drivers_inuse}, removing={remove}"
         )
-        with self._workers_lock:
-            for w in idle_workers[:remove]:
-                w.stop()
-                
-            keep = []
-            removed = 0
-            for w in self._workers:
-                if removed < remove and w in idle_workers:
-                    removed += 1         
-                    continue
-                keep.append(w)
 
-            self._workers.clear()
-            for w in keep:
-                self._workers.append(w)
+        for w in idle_workers[:remove]:
+            w.stop()
+            
+        keep = []
+        removed = 0
+        for w in self._workers:
+            if removed < remove and w in idle_workers:
+                removed += 1         
+                continue
+            keep.append(w)
+
+        self._workers.clear()
+        for w in keep:
+            self._workers.append(w)
 
     def _stop_all_workers(self) -> None:
         debug_logger.info(f"Stopping {len(self._workers)} workers...")
-        join_timeout = min(2.0, Config.get("misc.timeouts.join"))
+        timeout = Config.get("misc.timeouts.stop_all_workers_timeout")
 
         for w in self._workers:
             w.stop()
@@ -251,9 +245,9 @@ class TaskManager:
         start = time.perf_counter()
         for w in self._workers:
             try:
-                w.join(timeout=join_timeout)
+                w.join(timeout=timeout)
                 if w.is_alive():
-                    debug_logger.warning(f"Worker {w.name} did not exit cleanly within {join_timeout}s")
+                    debug_logger.warning(f"Worker {w.name} did not exit cleanly within {timeout}s")
                 else:
                     debug_logger.debug(f"Worker {w.name} exited cleanly")
             except Exception as e:
@@ -266,18 +260,22 @@ class TaskManager:
         now = time.monotonic()
         
         with self._stats_lock:
+            if now - self.last_scale_down_time >= self.scale_down_cooldown:
+                self.scale_downs_this_cycle.reset()
+                self.driver_pool.high_load_count.reset()
+        
             if now - self.last_scale_down_time < self.scale_down_cooldown:
                 return False
             
-            if self.scale_downs_this_cycle >= self.step_down:
+            if self.scale_downs_this_cycle.get() >= self.step_down:
                 return False
 
-            self.scale_downs_this_cycle += 1
+            self.scale_downs_this_cycle.increment()
             self.last_scale_down_time = now
 
         monitor_details.info(
-            f"[DESTROY_DRIVER] {worker.name} under pressure "
-            f"scale downs [{self.scale_downs_this_cycle}/{self.step_down}]"
+            f"[DESTROY_DRIVER] {worker.name} reason - under pressure "
+            f"scale downs [{self.scale_downs_this_cycle.get()}/{self.step_down}]"
         )
         return True
     

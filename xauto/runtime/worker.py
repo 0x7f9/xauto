@@ -16,8 +16,8 @@ import queue
 class Worker(threading.Thread):
     __slots__ = (
         'task_queue', 'driver_pool', 'driver', 'name', 'task_count', 
-        'successful_tasks', 'failed_tasks', '_start_time', '_exit_reason', 
-        '_stats_lock', '_max_task_retries', 'manager', 'current_task'
+        'successful_tasks', 'failed_tasks', '_exit_reason', 
+        '_max_task_retries', 'manager', 'current_task'
     )
     
     def __init__(
@@ -36,25 +36,23 @@ class Worker(threading.Thread):
         self.driver = None
         self.current_task = None
 
-        self._stats_lock = threading.Lock()
         self.task_count = 0
         self.successful_tasks = 0
         self.failed_tasks = 0
         self._exit_reason = "normal"
-        self._max_task_retries = Config.get("misc.timeouts.max_task_retries")
-        self._start_time = time.monotonic()
+        self._max_task_retries = Config.get("misc.timeouts.max_worker_task_retries")
     
     def stop(self) -> None:
         self.task_queue.put(None)
 
-    def get_stats(self) -> dict:
-        with self._stats_lock:
-            return {
-                'task_count': self.task_count,
-                'successful_tasks': self.successful_tasks,
-                'failed_tasks': self.failed_tasks,
-                'exit_reason': self._exit_reason
-            }
+    def get_worker_stats(self) -> dict:
+        return {
+            'worker': self.name,
+            'task_count': self.task_count,
+            'successful_tasks': self.successful_tasks,
+            'failed_tasks': self.failed_tasks,
+            'exit_reason': self._exit_reason
+        }
 
     def run(self):
         if not self.manager:
@@ -80,7 +78,7 @@ class Worker(threading.Thread):
             try:
                 if not self.driver:
                     # worker will block inside here waiting for a driver if under high load
-                    self.driver = acquire_driver_with_pressure_check(self.driver_pool, context=self.name)
+                    self.driver = acquire_driver_with_pressure_check(self.driver_pool, context=f"{self.name} trying to get driver")
 
                 processor(task_wrapper.idx, self.driver, task_wrapper.tasks)
                 self.successful_tasks += 1
@@ -115,7 +113,7 @@ class Worker(threading.Thread):
                 debug_logger.error(f"Destroying {self.name} failed: {e}")
             self.driver = None
         
-        delay = Config.get("misc.timeouts.recreate_max_delay")
+        delay = Config.get("misc.timeouts.driver_recreate_delay")
         if debug:
             debug_logger.warning(f"{self.name} waiting {delay}s before recreating")
         time.sleep(delay)

@@ -1,4 +1,7 @@
+from xauto.utils.config import Config
+from xauto.utils.injection import XAUTO_GET_USER_AGENT
 from xauto.utils.logging import debug_bot_detection, debug_logger
+from xauto.utils.setup import get_random_user_agent
 
 import re
 from selenium.webdriver.common.by import By
@@ -79,8 +82,6 @@ REQUEST_BASE_HEADERS = {
     "Connection": "keep-alive",
 }
 
-RequestException = requests.exceptions.RequestException
-
 def is_up(url, driver=None):
     headers = REQUEST_BASE_HEADERS.copy()
     if driver:
@@ -92,11 +93,15 @@ def is_up(url, driver=None):
     start = time.monotonic()
     try:
         session = get_session()
-        resp = session.get(url, headers=headers, timeout=Config.get("misc.timeouts.http_request"))
-        elapsed = time.monotonic() - start
+        resp = session.get(
+            url, 
+            headers=headers, 
+            timeout=Config.get("misc.timeouts.max_http_request_wait")
+        )
 
+        elapsed = time.monotonic() - start
         if resp.status_code < 400:
-            record_page_load_time(elapsed)
+            debug_logger.info(f"[IS_UP] check time {elapsed:.2f}s")
 
         if resp.status_code == 403:
             return True, resp.status_code

@@ -43,7 +43,7 @@ def explicit_page_load(driver: WebDriver, wait_for: Optional[float] = None) -> b
     from xauto.utils.browser_utils import close_popups
     close_popups(driver)
 
-    timeout = wait_for or Config.get("misc.timeouts.body_load")
+    timeout = wait_for or Config.get("misc.timeouts.max_body_load_wait")
     end_time = time.time() + timeout
 
     while time.time() < end_time:
@@ -72,7 +72,7 @@ def wait_for_page_load(driver: WebDriver, timeout: Optional[float] = None) -> bo
     from xauto.utils.browser_utils import close_popups
     close_popups(driver)
     
-    load_time = Config.get("misc.timeouts.body_load")
+    load_time = Config.get("misc.timeouts.max_body_load_wait")
     t = timeout or load_time
 
     if not ensure_body_loaded(driver, timeout=timeout):
@@ -121,7 +121,7 @@ def wait_for_page_load(driver: WebDriver, timeout: Optional[float] = None) -> bo
 
 @require_connected(False)
 def ensure_body_loaded(driver: WebDriver, timeout: Optional[float] = None) -> bool:
-    timeout = timeout or float(Config.get("misc.timeouts.body_load"))
+    timeout = timeout or float(Config.get("misc.timeouts.max_body_load_wait"))
     try:
         WebDriverWait(driver, timeout).until(lambda d: d.find_element(By.CSS_SELECTOR, "body"))  
         return True
@@ -135,7 +135,7 @@ def wait_for_url_change(
     old_url: str, 
     wait_for: Optional[float] = None
 ) -> bool:
-    timeout = wait_for or Config.get("misc.timeouts.url_loading")
+    timeout = wait_for or Config.get("misc.timeouts.max_url_load_wait")
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:

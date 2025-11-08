@@ -18,28 +18,28 @@ resources:
   driver_autoscaling:
     scaling_check_interval: 0.5
     step_up: 2
-    step_down: 1
-    scale_down_cooldown: 5.0
+    step_down: 2
+    scale_down_cooldown: 15.0
     spawn_buffer: 3.0
   
   driver_spawning:
     # these settings will control the start up speed of the pool
     # up max_spawns_per_window for a more aggressive start up
-    spawn_window_sec: 10
+    spawn_window_sec: 20
     max_spawns_per_window: 5
 
   memory_tuning:
     buffer:
-      up_margin: 5
-      down_margin: 10
+      up_margin: 4
+      down_margin: 2
       adjust_rate: 2
       
     pressure:
-      history_decay: 0.65
-      history: 5
-      system_check_interval: 2.0
-      mem_threshold: 75.0
+      history: 8
+      system_check_interval: 1.0
+      mem_threshold: 70.0
       cpu_threshold: 80.0
+      safe_margin: 5.0
       
     pressure_blocking:
       # during high load max time a driver will wait before going ahead with its work. 
@@ -67,29 +67,30 @@ misc:
   python_version: "3.10"
 
   logging:
-    interval: 10
+    log_timer_interval: 5
     # turn on/off [enter] status console
     # status console is set up inside setup_runtime()
     status_console: true
 
   thread_monitoring:
-    interval_sec: 1
+    worker_monitor_loop_interval: 1
   
-  # default timeouts
   timeouts:
-    body_load: 5
-    url_loading: 5
-    max_task_retries: 2
-    shutdown: 10
-    join: 10
-    worker: 5
-    idle_cycle_check: 6
-    # max time a driver can sit in the queue
-    # drivers are only put back in the queue between
-    # tasks. should rarely ever trigger at 30 secs
-    max_driver_idle_sec: 30
-    # how long to wait before trying to recreate a failed driver
-    recreate_max_delay: 5
-    # driver spawn timeouts
-    spawn_wait_delay: 3
+    # shutdown timeouts 
+    program_shutdown_timeout: 10
+    stop_all_workers_timeout: 10
+    stop_worker_timeout: 5
 
+    # function retries
+    send_key_retry_base: 1.0
+    send_key_retry_jitter: 0.2
+    max_send_key_retries: 2
+    max_worker_task_retries: 2
+
+    # loading timeouts
+    max_body_load_wait: 10
+    max_url_load_wait: 5
+
+    # driver timeouts
+    driver_recreate_delay: 5
+    driver_slot_wait_delay: 3
