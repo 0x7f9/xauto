@@ -64,9 +64,9 @@ class TaskManager:
         for idx, _ in enumerate(tasks):
             self.add_task(idx, tasks)
     
-    def wait_completion(self) -> bool:
+    def wait_completion(self):
         self.task_queue.join()
-        return True
+        return
     
     def start(self, initial_workers: Optional[int] = None) -> None:
         if len(self._workers) > 0:

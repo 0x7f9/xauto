@@ -23,8 +23,7 @@ resources:
     spawn_buffer: 3.0
   
   driver_spawning:
-    # these settings will control the start up speed of the pool
-    # up max_spawns_per_window for a more aggressive start up
+    # controls the start up speed of drivers
     spawn_window_sec: 20
     max_spawns_per_window: 5
 
@@ -35,14 +34,14 @@ resources:
       adjust_rate: 2
       
     pressure:
-      history: 8
+      history: 5
       system_check_interval: 1.0
-      mem_threshold: 70.0
+      mem_threshold: 75.0
       cpu_threshold: 80.0
-      safe_margin: 5.0
+      safe_margin: 10.0
       
     pressure_blocking:
-      # during high load max time a driver will wait before going ahead with its work. 
+      # during wait_high_load() max time a driver will wait under high load
       max_wait_time: 30.0
       # workers wait in N second chunks before checking again
       wait_chunk_time: 3.0
@@ -63,7 +62,8 @@ ui:
 
 misc:
   debug_mode: false
-  geckodriver_version: "0.35.0"
+  debug_mode_network: false
+  geckodriver_version: "0.36.0"
   python_version: "3.10"
 
   logging:

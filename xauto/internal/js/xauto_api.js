@@ -52,10 +52,7 @@
 
     function recordRequest(started, url) {
       try {
-        // if (pageInteractive) return;
-        
-        const sameOrigin = url && url.startsWith(location.origin);
-        if (!sameOrigin) return;
+        if (!url) return;
 
       if (started) totalRequests++;
       else completedRequests++;
@@ -64,70 +61,89 @@
 
     if (typeof window.fetch === 'function') {
       const origFetch = window.fetch;
-      window.fetch = new Proxy(origFetch, {
-        apply(target, thisArg, args) {
-          recordRequest(true);
-          return Reflect.apply(target, thisArg, args).finally(() => recordRequest(false));
-        }
-      });
+      window.fetch = function(input, _init) {
+        const url = typeof input === 'string' ? input : (input?.url ?? '');
+        recordRequest(true, url);
+        return origFetch.apply(this, arguments).finally(() => recordRequest(false, url));
+      };
     }
 
     const xhrs = new WeakMap();
     const origOpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function() {
-      xhrs.set(this, true);
+
+    XMLHttpRequest.prototype.open = function(_method, url) {
+      xhrs.set(this, { url: String(url) });
       return origOpen.apply(this, arguments);
     };
 
     const origSend = XMLHttpRequest.prototype.send;
     XMLHttpRequest.prototype.send = function() {
-      if (xhrs.get(this)) recordRequest(true);
-      this.addEventListener("loadend", () => {
-        if (xhrs.get(this)) recordRequest(false);
-      });
+      const meta = xhrs.get(this);
+      if (meta) recordRequest(true, meta.url);
+
+      const onEnd = () => {
+        if (meta) recordRequest(false, meta.url);
+        xhrs.delete(this);               
+        this.removeEventListener('loadend', onEnd);
+      };
+      this.addEventListener('loadend', onEnd);
+
       return origSend.apply(this, arguments);
     };
 
-    API.waitForReady = (maxWait = 10000, idleWindow = 200, threshold = 0.7) => {
+    API.waitForReady = (maxWait = 15000, idleWindow = 500, threshold = 0.8) => {
       return new Promise(resolve => {
         const start = Date.now();
+        const deadline = start + maxWait;
+        let idleStart     = 0;
+        let pendingId     = null;             
 
-        function checkReady() {
+        const cancel = () => {
+          if (pendingId !== null) {
+            clearTimeout(pendingId);
+            pendingId = null;
+          }
+        };
+
+        const checkReady = () => {
+          if (Date.now() >= deadline) {
+            cancel();
+            return resolve(false);
+          }
+
           const readyState = document.readyState;
           const percentDone = totalRequests === 0 ? 1 : completedRequests / totalRequests;
-
           const domReady = readyState === 'interactive' || readyState === 'complete';
           const netReady = percentDone >= threshold;
 
           if (domReady && netReady) {
-            const idleStart = Date.now();
+            idleStart = idleStart || Date.now();   
 
-            function confirmIdle() {
+            const confirmIdle = () => {
+              if (Date.now() >= deadline) {
+                cancel();
+                return resolve(false);
+              }
+
               const percent = totalRequests === 0 ? 1 : completedRequests / totalRequests;
               const idleTime = Date.now() - idleStart;
 
               if (percent >= threshold && idleTime >= idleWindow) {
                 totalRequests = 0;
                 completedRequests = 0;
+                cancel();
                 return resolve(true);
               }
 
-              if (Date.now() - start < maxWait) {
-                (window.requestIdleCallback || window.requestAnimationFrame)(confirmIdle);
-              } else {
-                resolve(false);
-              }
-            }
-
-            return (window.requestIdleCallback || window.requestAnimationFrame)(confirmIdle);
+              pendingId = (window.requestIdleCallback || window.requestAnimationFrame)(confirmIdle);
+            };
+            
+            pendingId = (window.requestIdleCallback || window.requestAnimationFrame)(confirmIdle);
+            return;
           }
 
-          if (Date.now() - start < maxWait) {
-            setTimeout(checkReady, 100);
-          } else {
-          resolve(false);
-          }
-        }
+          pendingId = setTimeout(checkReady, 50);
+        };
 
         checkReady();
       });
@@ -156,20 +172,17 @@
     window._xautoDebug ??= false;
 
     if (!window.__xautoOpenHooked) {
-      const origWindowOpen = window.open;
-      window.open = function (...args) {
+      const orig = window.open;
+      window.open = function(url, name, specs) {
         window._popupCount++;
-        const popup = origWindowOpen.apply(this, args);
-        if (popup) {
-          window.openedWindows.push(popup);
-        }
-        return popup;
+        const win = orig.call(this, url, name, specs);
+        if (win) window.openedWindows.push(win);
+        return win;
       };
       window.__xautoOpenHooked = true;
     }
 
     Object.freeze(API);
-    Object.freeze(window.openedWindows);
 
     if (!window._xautoAPI) {
       Object.defineProperty(window, '_xautoAPI', {

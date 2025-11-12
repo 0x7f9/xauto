@@ -88,15 +88,16 @@ failure_colour = text_colors["failure_colour"]
 warning_colour = text_colors["warning_colour"]
 light_grey_text_colour = text_colors["light_grey_text_colour"]
 
-debug = Config.get("misc.debug_mode", True)
+debug = Config.get("misc.debug_mode")
+network_debug = Config.get("misc.debug_mode_network")
 bold_text = Config.get("ui.bold_output", True)
-
-def _create_ephemeral_profile():
+def _create_firefox_profile():
     try:
         profile_dir = tempfile.mkdtemp(prefix="ff_profile_")
         return profile_dir
     except Exception as e:
-        logging.getLogger(__name__).warning(f"Failed to create ephemeral profile: {e}")
+        from xauto.utils.logging import debug_logger
+        debug_logger.warning(f"Failed to create firefox profile: {e}")
         return None
 
 def get_options():
@@ -106,7 +107,7 @@ def get_options():
     if headless:
         options.add_argument("--headless")
     
-    profile_dir = _create_ephemeral_profile()
+    profile_dir = _create_firefox_profile()
     if profile_dir:
         options.profile = profile_dir
         options.add_argument("-private")

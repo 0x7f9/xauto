@@ -14,11 +14,11 @@ VENV_DIR = os.path.join(BOOTSTRAP_DIR, "venv")
 
 IS_WINDOWS = platform.system() == "Windows"
 if IS_WINDOWS:
-    PYTHON_EXE = os.path.join(VENV_DIR, "Scripts", "python.exe")
-    PIP_EXE = os.path.join(VENV_DIR, "Scripts", "pip.exe")
+    PYTHON_VENV_EXE = os.path.join(VENV_DIR, "Scripts", "python.exe")
+    PIP_VENV_EXE = os.path.join(VENV_DIR, "Scripts", "pip.exe")
 else:
-    PYTHON_EXE = os.path.join(VENV_DIR, "bin", "python")
-    PIP_EXE = os.path.join(VENV_DIR, "bin", "pip")
+    PYTHON_VENV_EXE = os.path.join(VENV_DIR, "bin", "python")
+    PIP_VENV_EXE = os.path.join(VENV_DIR, "bin", "pip")
 
 BOOTSTRAP_LOG = os.path.join(BOOTSTRAP_DIR, "bootstrap.log")
 BOOTSTRAP_DONE_MARKER = os.path.join(BOOTSTRAP_DIR, ".bootstrap_done")
@@ -73,7 +73,7 @@ def is_in_venv():
         return False
     
     try:
-        return os.path.samefile(sys.executable, PYTHON_EXE)
+        return os.path.samefile(sys.executable, PYTHON_VENV_EXE)
     except (OSError, FileNotFoundError):
         return False
 
@@ -82,12 +82,12 @@ def is_venv_functional():
     if not os.path.exists(VENV_DIR):
         return False
     
-    if not os.path.exists(PYTHON_EXE):
+    if not os.path.exists(PYTHON_VENV_EXE):
         return False
     
     try:
         # this hardcodes a package name, this might effect users if not inside installs.txt
-        result = subprocess.run([PYTHON_EXE, "-c", "import requests"], 
+        result = subprocess.run([PYTHON_VENV_EXE, "-c", "import requests"], 
                               capture_output=True, text=True, timeout=10)
         return result.returncode == 0
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
@@ -101,13 +101,24 @@ def create_venv():
         logger.info(f"Using existing virtual environment at {VENV_DIR}")
         return True
     
+    python = sys.executable or "python3"
+    if not python:
+        logger.error("No Python interpreter found ")
+        print("No Python interpreter found ")
+        return False
+
+    try:
+        subprocess.run([python, "-c", "import venv"], check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        logger.error("Missing bootstrap package python3-venv: install it with 'sudo apt install python3-venv'")
+        print("Missing bootstrap package python3-venv: install it with 'sudo apt install python3-venv'")
+        return False
+    
     logger.info(f"Creating virtual environment at {VENV_DIR}")
     try:
-        subprocess.run(["python3", "-m", "venv", VENV_DIR], 
+        subprocess.run([python, "-m", "venv", VENV_DIR], 
                        check=True, capture_output=True, text=True)
 
-        # subprocess.run([sys.executable, "-m", "venv", VENV_DIR], 
-        #               check=True, capture_output=True, text=True)
         logger.info("Virtual environment created successfully")
         return True
     except subprocess.CalledProcessError as e:
@@ -120,7 +131,7 @@ def create_venv():
 def install_pip():
     logger = setup_bootstrap_logger()
     
-    if os.path.exists(PIP_EXE):
+    if os.path.exists(PIP_VENV_EXE):
         logger.info("pip already installed in virtual environment")
         return True
         
@@ -130,7 +141,7 @@ def install_pip():
     
     logger.info("Installing pip using bundled get-pip.py")
     try:
-        subprocess.run([PYTHON_EXE, GET_PIP_PATH, "--quiet", "--no-warn-script-location"], 
+        subprocess.run([PYTHON_VENV_EXE, GET_PIP_PATH, "--quiet", "--no-warn-script-location"], 
                       check=True, capture_output=True, text=True)
         logger.info("pip installed successfully")
         return True
@@ -147,13 +158,13 @@ def install_packages():
         logger.warning(f"installs.txt not found at {INSTALLS_FILE}")
         return True
     
-    if not os.path.exists(PIP_EXE):
+    if not os.path.exists(PIP_VENV_EXE):
         logger.error("pip not available for package installation")
         return False
     
     logger.info("Installing required packages...")
     try:
-        subprocess.run([PIP_EXE, "install", "--disable-pip-version-check", "--no-cache-dir", "-r", INSTALLS_FILE], 
+        subprocess.run([PIP_VENV_EXE, "install", "--disable-pip-version-check", "--no-cache-dir", "-r", INSTALLS_FILE], 
                                 check=True, capture_output=True, text=True)
         logger.info("Package installation completed")
         print("Package installation completed")
@@ -178,7 +189,7 @@ def bootstrap_venv():
     if os.path.exists(BOOTSTRAP_DONE_MARKER) and is_venv_functional():
         print("Bootstrap marker exists and venv is functional, switching to it...")
         try:
-            os.execv(PYTHON_EXE, [PYTHON_EXE] + sys.argv)
+            os.execv(PYTHON_VENV_EXE, [PYTHON_VENV_EXE] + sys.argv)
         except OSError as e:
             print(f"Failed to re-execute script: {e}")
             sys.exit(1)
@@ -201,7 +212,7 @@ def bootstrap_venv():
         f.write("ok\n")
     
     try:
-        os.execv(PYTHON_EXE, [PYTHON_EXE] + sys.argv)
+        os.execv(PYTHON_VENV_EXE, [PYTHON_VENV_EXE] + sys.argv)
     except OSError as e:
         print(f"Failed to re-execute script: {e}")
         sys.exit(1)

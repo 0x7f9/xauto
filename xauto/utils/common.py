@@ -37,12 +37,12 @@ def status_print(start_time=None, tasks=None, outcomes=None):
         runtime = time.perf_counter() - start_time
         task_count = len(tasks) if tasks is not None else 0
         
-        completed_count = int(outcomes['completed']) if 'completed' in outcomes else 0
+        completed_count = outcomes['completed'].get() if 'completed' in outcomes else 0
         print(f"\nRuntime: {runtime:.1f}s")
         print(f"Completed: {completed_count} out of {task_count} tasks")
-        print(f"Successful tasks: {int(outcomes['successful']) if 'successful' in outcomes else 0}")
-        print(f"Failed tasks: {int(outcomes['failed']) if 'failed' in outcomes else 0}")
-        print(f"Invalid pages: {int(outcomes['invalid']) if 'invalid' in outcomes else 0}")
+        print(f"Successful logins: {outcomes['successful'].get() if 'successful' in outcomes else 0}")
+        print(f"Failed logins: {outcomes['failed'].get() if 'failed' in outcomes else 0}")
+        print(f"Invalid pages: {outcomes['invalid'].get() if 'invalid' in outcomes else 0}")
         
     except Exception as e:
         debug_logger.error(f"Error in status_print: {e}")

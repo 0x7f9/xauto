@@ -98,13 +98,8 @@ class Worker(threading.Thread):
                 self._maybe_destroy_driver_for_pressure()
 
     def _handle_driver_failure(self, error: Exception) -> None:
-        error_str = str(error).lower()
-
-        if is_connection_error(error_str):
-            debug_logger.warning(f"{self.name}: Driver connection error on task #{self.task_count}: {error}")
-        else:
-            debug_logger.error(f"{self.name}: Driver error on task #{self.task_count}: {error}, replacing driver")
-            debug_logger.error(f"{self.name}: Traceback: {traceback.format_exc()}")
+        debug_logger.error(f"{self.name}: Driver error on task #{self.task_count}: {error}, replacing driver")
+        debug_logger.error(f"{self.name}: Traceback: {traceback.format_exc()}")
     
         if self.driver:
             try:
@@ -114,8 +109,7 @@ class Worker(threading.Thread):
             self.driver = None
         
         delay = Config.get("misc.timeouts.driver_recreate_delay")
-        if debug:
-            debug_logger.warning(f"{self.name} waiting {delay}s before recreating")
+        debug_logger.warning(f"{self.name} waiting {delay}s before recreating")
         time.sleep(delay)
 
     def _return_driver(self) -> None:

@@ -113,35 +113,31 @@ def teardown_runtime(task_manager: Optional[TaskManager], driver_pool: Optional[
     
     shutdown_threads = []
     
-    if task_manager:
-        def shutdown_task_manager():
-            debug_logger.info("TaskManager shutdown thread started")
-            shutdown_component_with_timeout(task_manager, "TaskManager", shutdown_timeout, "shutdown")
-            debug_logger.info("TaskManager shutdown thread completed")
-        tm_thread = SafeThread(
-            target_fn=shutdown_task_manager, 
-            name="TaskManagerShutdown"
-        )
-        tm_thread.start()
-        shutdown_threads.append(tm_thread)
-    
+    def _start_shutdown_thread(component, display_name, thread_name, timeout, action="shutdown"):
+        def _target():
+            debug_logger.info(f"{display_name} shutdown thread started")
+            shutdown_component_with_timeout(component, display_name, timeout, action)
+            debug_logger.info(f"{display_name} shutdown thread completed")
+
+        t = SafeThread(target_fn=_target, name=thread_name)
+        shutdown_threads.append(t)
+        t.start()
+        return t
+
+    _start_shutdown_thread(driver_pool, "DriverPool", "DriverPoolShutdown", shutdown_timeout)
+    _start_shutdown_thread(task_manager, "TaskManager", "TaskManagerShutdown", shutdown_timeout)
+
     debug_logger.info("Stopping background threads...")
     force_kill_thread("resource_thread")
     force_kill_thread("status_thread")
+
+    cleanup_memory_monitor()
     
     debug_logger.info(f"Waiting for {len(shutdown_threads)} shutdown threads...")
     for thread in shutdown_threads:
         thread.join(timeout=shutdown_timeout)
     
-    if task_manager and task_manager.monitor_thread is not None:
-        debug_logger.info("Joining TaskManager monitor thread…")
-        task_manager.monitor_thread.join(timeout=shutdown_timeout)
-        if task_manager.monitor_thread.is_alive():
-            debug_logger.warning("Monitor thread did not exit cleanly")
-
-    shutdown_component_with_timeout(driver_pool, "driver pool", shutdown_timeout, "shutdown")
-    
-    cleanup_memory_monitor()
-    
     _thread_state.clear()
     debug_logger.info("Runtime teardown completed")
+
+    
